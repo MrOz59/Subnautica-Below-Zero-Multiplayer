@@ -3,6 +3,7 @@
     using System;
     using System.Collections;
     using System.Collections.Generic;
+    using System.Collections.Concurrent;
 
     using Subnautica.API.Enums;
     using Subnautica.API.Extensions;
@@ -25,7 +26,7 @@
          * @author Ismail <ismaiil_0234@hotmail.com>
          *
          */
-        public Queue<NetworkPacket> Packets { get; set; } = new Queue<NetworkPacket>();
+        public SynchronizedPacketQueue Packets { get; set; } = new SynchronizedPacketQueue();
 
         /**
          *
@@ -70,7 +71,7 @@
          * @author Ismail <ismaiil_0234@hotmail.com>
          *
          */
-        public static Dictionary<NetworkChannel, MultiplayerChannelProcessor> Processors { get; set; } = new Dictionary<NetworkChannel, MultiplayerChannelProcessor>();
+        public static ConcurrentDictionary<NetworkChannel, MultiplayerChannelProcessor> Processors { get; set; } = new ConcurrentDictionary<NetworkChannel, MultiplayerChannelProcessor>();
 
         /**
          *
@@ -83,7 +84,7 @@
         {
             if (!Processors.TryGetValue(this.ChannelId, out var instance))
             {
-                Processors.Add(this.ChannelId, this);
+                Processors.TryAdd(this.ChannelId, this);
                 DontDestroyOnLoad(gameObject);
             }
             else
@@ -115,11 +116,16 @@
             }
             else
             {
-                while (this.Packets.Count > 0)
+                int budget = this.ChannelId == NetworkChannel.PlayerMovement ||
+                             this.ChannelId == NetworkChannel.VehicleMovement ||
+                             this.ChannelId == NetworkChannel.EntityMovement ||
+                             this.ChannelId == NetworkChannel.FishMovement ? 64 : 128;
+
+                NetworkPacket packet;
+                while (budget-- > 0 && this.Packets.TryDequeue(out packet))
                 {
                     try
                     {
-                        var packet = this.Packets.Dequeue();
                         if (packet != null)
                         {
                             if (ProcessorShared.Processors.TryGetValue(packet.Type, out NormalProcessor processor))
@@ -156,9 +162,9 @@
         {
             this.IsAsyncConsuming = true;
 
-            while (this.Packets.Count > 0)
+            NetworkPacket packet;
+            while (this.Packets.TryDequeue(out packet))
             {
-                var packet = this.Packets.Dequeue();
                 if (packet != null)
                 {
                     if (ProcessorShared.Processors.TryGetValue(packet.Type, out NormalProcessor processor))
@@ -267,7 +273,10 @@
          */
         public void OnDestroy()
         {
-            Processors.Remove(this.ChannelId);
+            if (Processors.TryGetValue(this.ChannelId, out var current) && ReferenceEquals(current, this))
+            {
+                Processors.TryRemove(this.ChannelId, out var removed);
+            }
         }
 
         /**
