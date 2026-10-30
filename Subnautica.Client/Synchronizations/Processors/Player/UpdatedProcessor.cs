@@ -16,6 +16,7 @@ namespace Subnautica.Client.Synchronizations.Processors.Player
 
     public class UpdatedProcessor : NormalProcessor
     {
+        private static uint LastSnapshotSequence;
         /**
          *
          * Default Hand Rotation
@@ -53,8 +54,15 @@ namespace Subnautica.Client.Synchronizations.Processors.Player
 
             if (player.IsCreatedModel)
             {
-                player.Position       = packet.CompressedPosition.ToVector3();
-                player.Rotation       = packet.CompressedRotation.ToQuaternion();
+                var nextPosition = packet.CompressedPosition.ToVector3();
+                var nextRotation = packet.CompressedRotation.ToQuaternion();
+                if (!player.PlayerMovementBuffer.AddSnapshot(packet.SnapshotSequence, packet.SnapshotTime, nextPosition, nextRotation))
+                {
+                    return true;
+                }
+
+                player.Position       = nextPosition;
+                player.Rotation       = nextRotation;
                 player.Equipments     = packet.Equipments;
                 player.IsPrecursorArm = packet.IsPrecursorArm;
                 player.EmoteIndex     = (float) packet.EmoteIndex;
@@ -86,6 +94,8 @@ namespace Subnautica.Client.Synchronizations.Processors.Player
             {
                 ServerModel.PlayerUpdatedArgs request = new ServerModel.PlayerUpdatedArgs()
                 {
+                    SnapshotSequence = ++LastSnapshotSequence,
+                    SnapshotTime     = Time.realtimeSinceStartup,
                     CompressedPosition              = ev.Position.Compress(),
                     CompressedLocalPosition         = Network.Session.IsInSeaTruck ? ev.LocalPosition.Compress() : 0,
                     CompressedRotation              = ev.Rotation.Compress(),

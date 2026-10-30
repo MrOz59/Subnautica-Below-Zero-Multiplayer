@@ -173,5 +173,11 @@
          */
         [Key(17)]
         public NetworkPlayerItemComponent HandItemComponent { get; set; }
+
+        [Key(18)]
+        public uint SnapshotSequence { get; set; }
+
+        [Key(19)]
+        public float SnapshotTime { get; set; }
     }
 }

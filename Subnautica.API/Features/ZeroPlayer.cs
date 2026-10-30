@@ -1783,6 +1783,10 @@
          * @author Ismail <ismaiil_0234@hotmail.com>
          *
          */
+        public RemoteMovementBuffer PlayerMovementBuffer { get; } = new RemoteMovementBuffer();
+
+        public RemoteMovementBuffer VehicleMovementBuffer { get; } = new RemoteMovementBuffer();
+
         public Vector3 Position { get; set; } = new Vector3();
 
         /**

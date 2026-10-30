@@ -95,6 +95,12 @@ namespace Subnautica.Network.Models.Server
          */
         [Key(9)]
         public VehicleUpdateComponent Component { get; set; }
+
+        [Key(10)]
+        public uint SnapshotSequence { get; set; }
+
+        [Key(11)]
+        public float SnapshotTime { get; set; }
     }
 
     [Union(0, typeof(ExosuitUpdateComponent))]
