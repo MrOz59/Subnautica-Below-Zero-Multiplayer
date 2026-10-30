@@ -24,6 +24,11 @@
                 return this.SendEmptyPacketErrorLog(networkPacket);
             }
 
+            if (!profile.AcceptMovementSnapshot(packet.SnapshotSequence, false))
+            {
+                return true;
+            }
+
             if (packet.ItemInHand != TechType.None)
             {
                 profile.AddUsedTool(packet.ItemInHand);

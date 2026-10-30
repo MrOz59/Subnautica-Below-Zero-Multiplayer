@@ -27,6 +27,47 @@
     [MessagePackObject]
     public class AuthorizationProfile
     {
+        [IgnoreMember]
+        private readonly object movementSequenceLock = new object();
+
+        [IgnoreMember]
+        private uint lastPlayerSnapshotSequence;
+
+        [IgnoreMember]
+        private uint lastVehicleSnapshotSequence;
+
+        /// <summary>
+        /// A delayed unreliable packet must not roll back server movement state.
+        /// The sender uses independent sequence streams for player and vehicle movement.
+        /// </summary>
+        public bool AcceptMovementSnapshot(uint sequence, bool vehicle)
+        {
+            if (sequence == 0)
+            {
+                return true; // Compatibility with older movement packets.
+            }
+
+            lock (movementSequenceLock)
+            {
+                uint last = vehicle ? lastVehicleSnapshotSequence : lastPlayerSnapshotSequence;
+                if (last != 0 && unchecked((int)(sequence - last)) <= 0)
+                {
+                    return false;
+                }
+
+                if (vehicle)
+                {
+                    lastVehicleSnapshotSequence = sequence;
+                }
+                else
+                {
+                    lastPlayerSnapshotSequence = sequence;
+                }
+
+                return true;
+            }
+        }
+
         /**
          *
          * Oyuncu Id

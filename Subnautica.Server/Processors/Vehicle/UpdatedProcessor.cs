@@ -35,6 +35,11 @@
                 return false;
             }
 
+            if (!profile.AcceptMovementSnapshot(packet.SnapshotSequence, true))
+            {
+                return true;
+            }
+
             entity.Position = packet.Position;
             entity.Rotation = packet.Rotation;
             packet.PlayerId = profile.PlayerId;
