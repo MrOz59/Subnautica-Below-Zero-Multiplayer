@@ -297,31 +297,58 @@
          */
         public void InterpolateMovement(bool isInSeaTruck)
         {
-            if (isInSeaTruck)
+            if (this.WasInSeaTruck != isInSeaTruck)
             {
-                if (ZeroVector3.Distance(this.Player.Position, transform.localPosition) > 100f)
-                {
-                    this.IsTeleported = true;
+                this.Player.PlayerMovementBuffer.Reset();
+                this.WasInSeaTruck = isInSeaTruck;
+            }
 
-                    transform.localPosition = this.Player.Position;
+            Vector3 targetPosition;
+            Quaternion unusedRotation;
+            bool hasSnapshot = this.Player.PlayerMovementBuffer.TrySample(out targetPosition, out unusedRotation);
+            if (!hasSnapshot)
+            {
+                targetPosition = this.Player.Position;
+            }
+
+            Vector3 previousPosition = isInSeaTruck ? transform.localPosition : transform.position;
+            if (ZeroVector3.Distance(targetPosition, previousPosition) > 100f)
+            {
+                this.IsTeleported = true;
+                this.SmoothedPositionVelocity = Vector3.zero;
+                if (isInSeaTruck)
+                {
+                    transform.localPosition = targetPosition;
                 }
                 else
                 {
-                    transform.localPosition = Vector3.SmoothDamp(transform.localPosition, this.Player.Position, ref this.SmoothedPositionVelocity, 0.1f);
+                    transform.position = targetPosition;
                 }
+
+                this.Player.PlayerMovementBuffer.Reset();
+            }
+            else if (hasSnapshot)
+            {
+                if (isInSeaTruck)
+                {
+                    transform.localPosition = targetPosition;
+                }
+                else
+                {
+                    transform.position = targetPosition;
+                }
+
+                float delta = Mathf.Max(Time.unscaledDeltaTime, 0.001f);
+                Vector3 velocity = (targetPosition - previousPosition) / delta;
+                this.SmoothedPositionVelocity = Vector3.Lerp(this.SmoothedPositionVelocity, velocity, Mathf.Clamp01(delta * 10f));
+            }
+            else if (isInSeaTruck)
+            {
+                transform.localPosition = Vector3.SmoothDamp(transform.localPosition, targetPosition, ref this.SmoothedPositionVelocity, 0.1f);
             }
             else
             {
-                if (ZeroVector3.Distance(this.Player.Position, transform.position) > 100f)
-                {
-                    this.IsTeleported = true;
-
-                    transform.position = this.Player.Position;
-                }
-                else
-                {
-                    transform.position = Vector3.SmoothDamp(transform.position, this.Player.Position, ref this.SmoothedPositionVelocity, 0.1f);
-                }
+                transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref this.SmoothedPositionVelocity, 0.1f);
             }
 
             this.Player.SetVelocity(this.SmoothedPositionVelocity);
@@ -336,7 +363,16 @@
          */
         public void InterpolateRotation()
         {
-            this.transform.rotation = BroadcastInterval.QuaternionSmoothDamp(this.transform.rotation, this.Player.Rotation, ref this.SmoothedRotationVelocity, 0.1f);
+            Vector3 unusedPosition;
+            Quaternion targetRotation;
+            if (this.Player.PlayerMovementBuffer.TrySample(out unusedPosition, out targetRotation))
+            {
+                this.transform.rotation = targetRotation;
+            }
+            else
+            {
+                this.transform.rotation = BroadcastInterval.QuaternionSmoothDamp(this.transform.rotation, this.Player.Rotation, ref this.SmoothedRotationVelocity, 0.1f);
+            }
         }
 
         /**
@@ -451,6 +487,8 @@
          * @author Ismail <ismaiil_0234@hotmail.com>
          *
          */
+        private bool WasInSeaTruck;
+
         private Vector3 SmoothedVelocity = Vector3.zero;
 
         /**

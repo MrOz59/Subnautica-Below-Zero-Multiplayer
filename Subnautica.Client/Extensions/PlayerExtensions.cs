@@ -180,6 +180,7 @@
         {
             player.VehicleId   = 0;
             player.VehicleType = TechType.None;
+            player.VehicleMovementBuffer.Reset();
         }
 
         /**

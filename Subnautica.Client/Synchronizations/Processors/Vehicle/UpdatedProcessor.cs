@@ -18,6 +18,7 @@
 
     public class UpdatedProcessor : NormalProcessor
     {
+        private static uint LastSnapshotSequence;
         /**
          *
          * ExosuitUpdateComponent nesnesini barındırır.
@@ -75,6 +76,17 @@
                 return false;
             }
 
+            if (player.VehicleId != packet.EntityId)
+            {
+                player.VehicleMovementBuffer.Reset();
+            }
+
+            if (!player.VehicleMovementBuffer.AddSnapshot(packet.SnapshotSequence, packet.SnapshotTime,
+                packet.Position.ToVector3(), packet.Rotation.ToQuaternion()))
+            {
+                return true;
+            }
+
             player.SetVehicle(packet.EntityId, packet.Position, packet.Rotation, packet.Component);
             return true;
         }
@@ -93,6 +105,8 @@
             {
                 ServerModel.VehicleUpdatedArgs request = new ServerModel.VehicleUpdatedArgs()
                 {
+                    SnapshotSequence = ++LastSnapshotSequence,
+                    SnapshotTime     = Time.realtimeSinceStartup,
                     EntityId  = entity.Id,
                     Position  = ev.Position.ToZeroVector3(),
                     Rotation  = ev.Rotation.ToZeroQuaternion(),

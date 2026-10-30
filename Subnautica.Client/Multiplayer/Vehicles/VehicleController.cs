@@ -172,15 +172,36 @@
         {
             if (this.Management.Vehicle)
             {
-                if (this.GetDistance() > 100f)
+                Vector3 targetPosition;
+                Quaternion targetRotation;
+                bool hasSnapshot = this.Management.Player.VehicleMovementBuffer.TrySample(out targetPosition, out targetRotation);
+                if (!hasSnapshot)
                 {
-                    this.Management.Vehicle.transform.position = this.Management.Player.VehiclePosition;
-                    this.Management.Vehicle.transform.rotation = this.Management.Player.VehicleRotation;
+                    targetPosition = this.Management.Player.VehiclePosition;
+                    targetRotation = this.Management.Player.VehicleRotation;
+                }
+
+                Vector3 previousPosition = this.Management.Vehicle.transform.position;
+                if (ZeroVector3.Distance(previousPosition, targetPosition) > 100f)
+                {
+                    this.Management.Vehicle.transform.position = targetPosition;
+                    this.Management.Vehicle.transform.rotation = targetRotation;
+                    this.VehicleVelocity = Vector3.zero;
+                    this.Management.Player.VehicleMovementBuffer.Reset();
+                }
+                else if (hasSnapshot)
+                {
+                    this.Management.Vehicle.transform.position = targetPosition;
+                    this.Management.Vehicle.transform.rotation = targetRotation;
+
+                    float delta = Mathf.Max(Time.unscaledDeltaTime, 0.001f);
+                    Vector3 velocity = (targetPosition - previousPosition) / delta;
+                    this.VehicleVelocity = Vector3.Lerp(this.VehicleVelocity, velocity, Mathf.Clamp01(delta * 10f));
                 }
                 else
                 {
-                    this.Management.Vehicle.transform.position = Vector3.SmoothDamp(this.Management.Vehicle.transform.position, this.Management.Player.VehiclePosition, ref this.VehicleVelocity, 0.1f);
-                    this.Management.Vehicle.transform.rotation = BroadcastInterval.QuaternionSmoothDamp(this.Management.Vehicle.transform.rotation, this.Management.Player.VehicleRotation, ref this.VehicleRotationVelocity, 0.1f);
+                    this.Management.Vehicle.transform.position = Vector3.SmoothDamp(previousPosition, targetPosition, ref this.VehicleVelocity, 0.1f);
+                    this.Management.Vehicle.transform.rotation = BroadcastInterval.QuaternionSmoothDamp(this.Management.Vehicle.transform.rotation, targetRotation, ref this.VehicleRotationVelocity, 0.1f);
                 }
 
                 this.Management.Player.SetVelocity(this.VehicleVelocity);
