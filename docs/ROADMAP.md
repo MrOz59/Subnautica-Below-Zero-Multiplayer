@@ -9,7 +9,7 @@ first-class runtime, while remaining compatible with Windows.
 - [x] Steam installation discovery, diagnostics and Proton notes.
 - [x] Local BepInEx plugin install.
 - [x] BepInEx plugin entry point and test probe.
-- [x] Network protocol + local UDP test server + smoke tests.
+- [x] Network protocol + local UDP test server + smoke tests.\n- [x] Versioned Hello/HelloAck and expiring endpoint sessions.\n- [x] UDP integration test against the running server.\n- [x] Transactional plugin install, rollback and idempotency tests.
 - [ ] Validate build against the exact installed Below Zero version.
 - [ ] Test on real Linux/Proton and Windows systems.
 
