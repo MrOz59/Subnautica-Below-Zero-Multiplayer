@@ -21,6 +21,9 @@ namespace BelowZeroCoop.Plugin
         private const float SessionTimeoutSeconds = 8f;
 
         private ConfigEntry<bool> enableProbe;
+        private ConfigEntry<bool> enableMovementPreview;
+        private readonly MovementPreview movementPreview = new MovementPreview();
+        private bool previewActive;
         private ConfigEntry<string> serverHost;
         private ConfigEntry<int> serverPort;
 
@@ -46,6 +49,8 @@ namespace BelowZeroCoop.Plugin
         {
             enableProbe = Config.Bind("Network", "EnableProbe", false,
                 "Enable a development-only UDP connectivity probe. Not multiplayer.");
+            enableMovementPreview = Config.Bind("Development", "EnableMovementPreview", false,
+                "Enable sending local position and rendering temporary peer capsules. LAN debug only.");
             serverHost = Config.Bind("Network", "Host", "127.0.0.1",
                 "IP address of the trusted BelowZeroCoop development server.");
             serverPort = Config.Bind("Network", "Port", 27021,
@@ -60,6 +65,11 @@ namespace BelowZeroCoop.Plugin
             {
                 if (socket != null)
                     CloseSocket();
+                if (previewActive)
+                {
+                    movementPreview.Reset();
+                    previewActive = false;
+                }
                 return;
             }
 
@@ -97,6 +107,7 @@ namespace BelowZeroCoop.Plugin
                 Logger.LogWarning("Development server timed out; restarting hello.");
                 handshakeComplete = false;
                 awaitingPong = false;
+                movementPreview.Reset();
                 helloRetryAt = now;
                 return;
             }
@@ -111,6 +122,7 @@ namespace BelowZeroCoop.Plugin
                 {
                     Logger.LogWarning("Three network probe timeouts; renegotiating.");
                     handshakeComplete = false;
+                    movementPreview.Reset();
                     helloRetryAt = now;
                     return;
                 }
@@ -126,6 +138,35 @@ namespace BelowZeroCoop.Plugin
                     nextPingAt = pingSentAt + PingIntervalSeconds;
                     awaitingPong = true;
                 }
+            }
+
+            if (enableMovementPreview.Value)
+            {
+                previewActive = true;
+                movementPreview.Tick(now, SendMovement);
+            }
+            else if (previewActive)
+            {
+                movementPreview.Reset();
+                previewActive = false;
+            }
+        }
+
+        private void SendMovement(MovementDatagram movement)
+        {
+            if (socket == null || !handshakeComplete)
+                return;
+
+            try
+            {
+                byte[] bytes = MovementWireCodec.Encode(movement);
+                socket.Send(bytes, bytes.Length);
+            }
+            catch (SocketException ex)
+            {
+                Logger.LogWarning("Movement preview send error: " + ex.SocketErrorCode);
+                CloseSocket();
+                nextInitAttemptAt = Time.realtimeSinceStartup + 5f;
             }
         }
 
@@ -163,11 +204,18 @@ namespace BelowZeroCoop.Plugin
                 {
                     IPEndPoint remote = null;
                     byte[] bytes = socket.Receive(ref remote);
+                    float receivedAt = Time.realtimeSinceStartup;
+                    MovementDatagram movement;
+                    if (MovementWireCodec.TryDecode(bytes, out movement))
+                    {
+                        if (handshakeComplete && enableMovementPreview.Value)
+                            movementPreview.OnPosition(movement, receivedAt);
+                        continue;
+                    }
+
                     Packet packet;
                     if (!PacketCodec.TryDecode(bytes, out packet))
                         continue;
-
-                    float receivedAt = Time.realtimeSinceStartup;
                     if (packet.Type == PacketType.HelloAck &&
                         !handshakeComplete && packet.Sequence == lastHelloSequence)
                     {
@@ -176,6 +224,7 @@ namespace BelowZeroCoop.Plugin
                         missedPongs = 0;
                         nextPingAt = receivedAt;
                         lastResponseAt = receivedAt;
+                        movementPreview.Reset();
                         Logger.LogInfo("BelowZeroCoop development server handshake complete.");
                     }
                     else if (packet.Type == PacketType.Pong &&
@@ -268,6 +317,7 @@ namespace BelowZeroCoop.Plugin
             missedPongs = 0;
             smoothedRttMs = -1f;
             jitterMs = 0f;
+            movementPreview.Reset();
         }
     }
 }
