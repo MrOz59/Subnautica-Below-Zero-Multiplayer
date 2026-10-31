@@ -142,4 +142,5 @@ catch (ArgumentOutOfRangeException)
     invalidRejected = true;
 }
 Check(invalidRejected, "movement encode enforces world bounds");
-Console.WriteLine("Protocol, movement and interpolation smoke tests passed.");
+NetworkImpairmentTests.Run();
+Console.WriteLine("Protocol, movement, interpolation and impaired-network smoke tests passed.");
