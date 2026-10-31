@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 
 STEAM_APP_ID = "848450"
@@ -20,7 +21,7 @@ PROTOCOL_NAME = "BelowZeroCoop.Protocol.dll"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PLUGIN = PROJECT_ROOT / "src" / "BelowZeroCoop.Plugin" / "bin" / "Release" / "net472" / PLUGIN_NAME
 DEFAULT_PROTOCOL = DEFAULT_PLUGIN.with_name(PROTOCOL_NAME)
-STEAM_PROTON_OPTIONS = 'WINEDLLOVERRIDES="winhttp=n,b" %command%'
+STEAM_PROTON_OPTIONS = 'WINEDLLOVERRIDES="winhttp.dll=n,b" %command%'
 
 
 def config_file() -> Path:
@@ -165,36 +166,84 @@ def sha256(path: Path) -> str:
 
 
 def install_plugin(game_dir: Path, plugin_file: Path, protocol_file: Path, force: bool = False) -> list[str]:
+    """Install both assemblies as a transaction, with validation and rollback."""
     if not is_game_directory(game_dir):
         raise ValueError("Selected path is not a Subnautica Below Zero installation.")
     if not (game_dir / "BepInEx" / "core" / "BepInEx.dll").is_file():
-        raise ValueError("Install BepInEx first; the launcher does not download or bundle third-party files.")
+        raise ValueError("Install BepInEx first; dependencies are not downloaded automatically.")
     if not (game_dir / "winhttp.dll").is_file():
         raise ValueError("BepInEx loader proxy winhttp.dll is missing.")
 
     sources = ((plugin_file, PLUGIN_NAME), (protocol_file, PROTOCOL_NAME))
-    for src, expected in sources:
-        if not src.is_file() or src.name != expected:
-            raise ValueError("Expected compiled assembly: " + expected)
+    for source, name in sources:
+        if not source.is_file() or source.name != name:
+            raise ValueError("Expected compiled assembly: " + name)
 
     target_dir = game_dir / "BepInEx" / "plugins" / "BelowZeroCoop"
-    target_dir.mkdir(parents=True, exist_ok=True)
+    candidates: list[tuple[Path, Path]] = []
     results: list[str] = []
+    # Validate *both* destinations before installing *either* one.
     for source, name in sources:
         target = target_dir / name
         if target.exists():
+            if not target.is_file():
+                raise ValueError("Destination is not a file: " + str(target))
             if sha256(source) == sha256(target):
                 results.append("Unchanged: " + name)
                 continue
             if not force:
                 raise FileExistsError("Different version already installed: " + str(target) +
-                                      " (use --force to make a backup and update)")
-            suffix = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            backup = target.with_name(target.name + "." + suffix + ".bak")
-            shutil.copy2(target, backup)
-            results.append("Backup: " + str(backup))
-        shutil.copy2(source, target)
-        results.append("Installed: " + str(target))
+                                      " (use --force to back up and update)")
+        candidates.append((source, target))
+    if not candidates:
+        return results
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    staged: list[tuple[Path, Path]] = []
+    backups: list[tuple[Path, Path]] = []
+    installed: list[Path] = []
+    try:
+        for source, target in candidates:
+            with tempfile.NamedTemporaryFile(prefix=".bzc-", suffix=".tmp",
+                                             dir=target_dir, delete=False) as temporary:
+                stage = Path(temporary.name)
+            staged.append((stage, target))
+            shutil.copyfile(source, stage)
+            if sha256(stage) != sha256(source):
+                raise OSError("Staged assembly checksum mismatch: " + source.name)
+
+        for _, target in candidates:
+            if target.is_file():
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+                backup = target.with_name(target.name + "." + stamp + ".bak")
+                shutil.copy2(target, backup)
+                backups.append((target, backup))
+                results.append("Backup: " + str(backup))
+
+        for stage, target in staged:
+            os.replace(stage, target)
+            installed.append(target)
+            results.append("Installed: " + str(target))
+    except Exception:
+        for target in reversed(installed):
+            try:
+                target.unlink()
+            except OSError:
+                pass
+        for target, backup in backups:
+            try:
+                shutil.copy2(backup, target)
+            except OSError:
+                pass
+        raise
+    finally:
+        for stage, _ in staged:
+            if stage.exists():
+                try:
+                    stage.unlink()
+                except OSError:
+                    pass
+
     return results
 
 
@@ -311,7 +360,7 @@ def main(argv: list[str] | None = None) -> int:
     set_dir = commands.add_parser("set-game", help="Save game directory")
     set_dir.add_argument("game_dir")
     commands.add_parser("steam-options", help="Print Proton launch options")
-    ins = commands.add_parser("install", help="Install built original assemblies")
+    ins = commands.add_parser("install", help="Install built BelowZeroCoop assemblies")
     ins.add_argument("--game-dir")
     ins.add_argument("--plugin", type=Path, default=DEFAULT_PLUGIN)
     ins.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
