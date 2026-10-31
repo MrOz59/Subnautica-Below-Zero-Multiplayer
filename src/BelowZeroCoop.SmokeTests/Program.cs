@@ -81,4 +81,51 @@ for (uint i = 2; i < 200; i++)
                                       i * 0.1f, 0, 0), 1.20 + i * 0.05);
 }
 Check(wrapping.Count <= 32, "snapshot memory bounded");
-Console.WriteLine("Protocol and interpolation smoke tests passed.");
+// Movement is a separate, strictly length-delimited packet family.
+var movement = new MovementDatagram(0x12345678u, 7u, 12.345, 1.5f, -22.25f, 30f);
+var binary = MovementWireCodec.Encode(movement);
+Check(binary.Length == MovementWireCodec.Size, "movement datagram length");
+Check(binary[6] == 0x78 && binary[9] == 0x12, "movement sequence little-endian");
+Check(binary[10] == 7 && binary[11] == 0, "server peer id little-endian");
+Check(MovementWireCodec.TryDecode(binary, out MovementDatagram decodedMovement),
+      "movement decode");
+Check(decodedMovement.Sequence == movement.Sequence &&
+      decodedMovement.PeerId == movement.PeerId &&
+      decodedMovement.SentAt == movement.SentAt &&
+      decodedMovement.X == movement.X &&
+      decodedMovement.Y == movement.Y &&
+      decodedMovement.Z == movement.Z, "movement roundtrip");
+Check(!PacketCodec.TryDecode(binary, out _), "control decoder rejects movement frame");
+Check(!MovementWireCodec.TryDecode(new byte[10], out _), "movement rejects short payload");
+Check(!MovementWireCodec.TryDecode(new byte[400], out _), "movement rejects oversized payload");
+var badMagic = (byte[])binary.Clone();
+badMagic[0] = 0;
+Check(!MovementWireCodec.TryDecode(badMagic, out _), "movement rejects invalid magic");
+var badVersion = (byte[])binary.Clone();
+badVersion[4] = 200;
+Check(!MovementWireCodec.TryDecode(badVersion, out _), "movement rejects future protocol");
+var badType = (byte[])binary.Clone();
+badType[5] = 50;
+Check(!MovementWireCodec.TryDecode(badType, out _), "movement rejects invalid type");
+Check(!MovementWireCodec.TryDecode(null!, out _), "movement rejects null");
+bool invalidRejected = false;
+try
+{
+    MovementWireCodec.Encode(new MovementDatagram(1, 0, 0, float.NaN, 0, 0));
+}
+catch (ArgumentOutOfRangeException)
+{
+    invalidRejected = true;
+}
+Check(invalidRejected, "movement encode rejects NaN");
+invalidRejected = false;
+try
+{
+    MovementWireCodec.Encode(new MovementDatagram(1, 0, 0, 100001f, 0, 0));
+}
+catch (ArgumentOutOfRangeException)
+{
+    invalidRejected = true;
+}
+Check(invalidRejected, "movement encode enforces world bounds");
+Console.WriteLine("Protocol, movement and interpolation smoke tests passed.");
