@@ -201,11 +201,16 @@ internal sealed class IntegratedWorldSession : IDisposable
     /// </summary>
     public IntegratedRemovalResult Remove(Guid operationId, long expectedRevision,
         Guid entityId, int generation, bool cascade,
-        IReadOnlyCollection<ConstructionBounds> trustedPlayers, long hostMonotonicMs)
+        IReadOnlyCollection<ConstructionBounds> trustedPlayers, long hostMonotonicMs,
+        DateTime? hostUtc = null)
     {
         lock (gate)
         {
             EnsureOpen();
+            DateTime effectiveUtc = hostUtc ?? DateTime.UtcNow;
+            if (effectiveUtc.Kind != DateTimeKind.Utc)
+                return IntegratedRemovalResult.Fail("invalid_host_utc");
+
             return Apply((construction, power, crafting, world) =>
             {
                 var plan = construction.PreviewRemove(expectedRevision,
@@ -232,10 +237,18 @@ internal sealed class IntegratedWorldSession : IDisposable
                         return (IntegratedRemovalResult.Fail("power_cleanup_failed"), false);
                 }
 
-                foreach (ConstructionNode node in construction.Snapshot().Nodes)
+                List<ConstructionNode> removedFabricators =
+                    construction.Snapshot().Nodes.Where(node =>
+                        removedIds.Contains(node.Id) && node.Kind == "Fabricator")
+                    .ToList();
+
+                // A job which finished before teardown must stay claimable.
+                // Only unfinished jobs get cancelled and their materials refunded.
+                if (removedFabricators.Count > 0)
+                    crafting.Advance(effectiveUtc);
+
+                foreach (ConstructionNode node in removedFabricators)
                 {
-                    if (!removedIds.Contains(node.Id) || node.Kind != "Fabricator")
-                        continue;
                     if (!crafting.DestroyStation(node.Id, node.Generation))
                         return (IntegratedRemovalResult.Fail("craft_cleanup_failed"), false);
                 }

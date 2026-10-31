@@ -24,6 +24,7 @@ internal static class IntegratedWorldTests
     public static void Run()
     {
         OneSaveForCascadeEnergyAndCraftRefund();
+        FinishedCraftSurvivesConstructionTeardown();
         RejectInvalidOrOccupiedWithoutSideEffects();
         FailedStorageWriteDoesNotPublish();
         RejectCorruptCrossDomainSnapshots();
@@ -84,7 +85,7 @@ internal static class IntegratedWorldTests
                     "rejection leaves all three domains untouched");
 
                 var deleted = session.Remove(removalId, 6, room, 1,
-                    true, Nobody, 1000);
+                    true, Nobody, 1000, hostUtc: NowUtc.AddSeconds(1));
                 Check(deleted.Applied && deleted.RemovedCount == 3,
                     "whole base removed with one atomic cascade");
                 committedRevision = session.Snapshot().Revision;
@@ -159,6 +160,51 @@ internal static class IntegratedWorldTests
                 path, gridId, 10_000, new[] { Recipe });
             Check(verified.Snapshot().Fabrication.Inventories.Single()
                 .OwnedItems.Count == 1, "post-rebuild item persists on disk");
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static void FinishedCraftSurvivesConstructionTeardown()
+    {
+        string dir = Path.Combine(Path.GetTempPath(),
+            "bzc-completed-craft-" + Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(dir, "world.json");
+        try
+        {
+            using var session = new IntegratedWorldSession(
+                path, Guid.NewGuid(), 10000, new[] { Recipe });
+            Guid fab = Guid.NewGuid();
+            Check(session.Place(Guid.NewGuid(), 0, fab, 1, "Fabricator",
+                At(0), Nobody).Applied, "fabricator placed for completed-work check");
+            Check(session.GrantMaterials(Guid.NewGuid(), 7, "copper", 2),
+                "materials granted");
+            var craft = session.BeginCraft(Guid.NewGuid(), fab, 1,
+                7, "battery", NowUtc);
+            Check(craft.Started, "craft started");
+            long revision = session.Snapshot().Construction.Revision;
+
+            var removed = session.Remove(Guid.NewGuid(), revision,
+                fab, 1, false, Nobody, 1000, hostUtc: NowUtc.AddSeconds(3));
+            Check(removed.Applied, "fabricator removed after recipe deadline");
+
+            var state = session.Snapshot();
+            Check(state.Fabrication.Stations.Single().Deleted &&
+                  state.Fabrication.Jobs.Single().Status == FabricationStatus.Ready,
+                  "finished job remains Ready after station removal");
+            Check(state.Fabrication.Inventories.Single().Materials.Count == 0,
+                  "finished work does not refund already-consumed ingredients");
+
+            var delivered = session.DeliverCraft(craft.JobId, 7,
+                NowUtc.AddSeconds(4));
+            Check(delivered.Delivered && delivered.OutputItemId == craft.OutputItemId,
+                  "owner can retrieve finished item after machine removal");
+            Check(session.DeliverCraft(craft.JobId, 7,
+                NowUtc.AddSeconds(5)).Duplicate,
+                  "finished item cannot be minted a second time");
         }
         finally
         {
