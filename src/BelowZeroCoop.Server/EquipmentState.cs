@@ -232,8 +232,9 @@ internal sealed class EquipmentProfile
 {
     public uint PlayerId { get; set; }
     public long Revision { get; set; }
-    public List<Guid> OwnedItems { get; set; } = new();
-    public Guid?[] Slots { get; set; } = new Guid?[EquipmentState.QuickslotCount];
+    // Missing JSON fields must NOT silently default to empty inventory/slots.
+    public List<Guid> OwnedItems { get; set; } = null!;
+    public Guid?[] Slots { get; set; } = null!;
 
     public EquipmentProfile Copy() => new()
     {
@@ -263,6 +264,6 @@ internal sealed class LegacyEquipmentProfile
 {
     public uint PlayerId { get; set; }
     public long Revision { get; set; }
-    public List<Guid> OwnedItems { get; set; } = new();
-    public Guid?[] Quickslots { get; set; } = new Guid?[EquipmentState.QuickslotCount];
+    public List<Guid> OwnedItems { get; set; } = null!;
+    public Guid?[] Quickslots { get; set; } = null!;
 }

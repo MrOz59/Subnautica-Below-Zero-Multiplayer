@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using BelowZeroCoop.Server;
 
 static void Check(bool condition, string label)
@@ -110,6 +111,16 @@ static PowerCommand Device(long revision, PowerAction action,
         Check(corrupt, "incomplete equipment snapshot cannot erase slots");
         Check(GameplayStore.LoadEquipment(path + ".bak").SnapshotPlayer(actor) != null,
               "explicit equipment backup remains loadable");
+
+        // A syntactically valid JSON file with a missing nested slot field
+        // must never look like a player simply unequipped everything.
+        var incomplete = JsonNode.Parse(File.ReadAllText(path + ".bak"))!;
+        incomplete["Players"]!.AsArray()[0]!.AsObject().Remove("Slots");
+        File.WriteAllText(path, incomplete.ToJsonString());
+        bool missingSlotsRejected = false;
+        try { GameplayStore.LoadEquipment(path); }
+        catch (InvalidDataException) { missingSlotsRejected = true; }
+        Check(missingSlotsRejected, "missing quickslot field is never silently cleared");
     }
     finally
     {
@@ -242,6 +253,15 @@ static PowerCommand Device(long revision, PowerAction action,
         Check(powerFileCorrupt, "invalid power JSON cannot silently reset grid");
         Check(GameplayStore.LoadPower(path + ".bak").Snapshot().EnergyMilliUnits == 8000,
               "explicit power backup remains recoverable");
+
+        var incomplete = JsonNode.Parse(File.ReadAllText(path + ".bak"))!;
+        incomplete["Devices"]!.AsArray()[0]!.AsObject().Remove("RateMilliUnitsPerSecond");
+        File.WriteAllText(path, incomplete.ToJsonString());
+        bool missingRateRejected = false;
+        try { GameplayStore.LoadPower(path); }
+        catch (InvalidDataException) { missingRateRejected = true; }
+        Check(missingRateRejected,
+              "missing generator rate never silently disables production");
     }
     finally
     {

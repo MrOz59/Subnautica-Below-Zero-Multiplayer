@@ -77,6 +77,22 @@ internal static class GameplayStore
         }
     }
 
+    private static void ValidateEntries(
+        JsonElement document, string collection, params string[] required)
+    {
+        if (!document.TryGetProperty(collection, out JsonElement items) ||
+            items.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("Metadata collection is missing or invalid.");
+
+        foreach (JsonElement item in items.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object ||
+                required.Any(key => !item.TryGetProperty(key, out _)))
+                throw new InvalidDataException(
+                    "A metadata object is missing required fields.");
+        }
+    }
+
     private static T Read<T>(string path, params string[] requiredProperties)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -96,6 +112,19 @@ internal static class GameplayStore
                         !json.RootElement.TryGetProperty(property, out _)))
                     throw new InvalidDataException(
                         "Metadata snapshot is incomplete; restore an explicit backup.");
+
+                // Reject partial *nested* records too. A missing Slots array
+                // could otherwise become five empty quickslots after loading.
+                if (typeof(T) == typeof(EquipmentDocument))
+                    ValidateEntries(json.RootElement, "Players",
+                        "PlayerId", "Revision", "OwnedItems", "Slots");
+
+                // A source missing its stored Rate would otherwise silently
+                // become a zero-production generator after restart.
+                if (typeof(T) == typeof(PowerDocument))
+                    ValidateEntries(json.RootElement, "Devices",
+                        "Id", "Generation", "Role",
+                        "RateMilliUnitsPerSecond", "Deleted");
             }
 
             stream.Position = 0;
