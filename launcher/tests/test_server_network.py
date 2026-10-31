@@ -36,6 +36,61 @@ class ServerNetworkTests(unittest.TestCase):
                 cls.process.kill()
                 cls.process.communicate()
 
+
+    def test_movement_relay_and_server_authority(self):
+        def movement(seq, peer_id, timestamp, x, y=0.0, z=0.0):
+            return struct.pack("<4sBBIIdfff", b"BZC0", 1, 5,
+                               seq, peer_id, timestamp, x, y, z)
+
+        def connect_peer(sock, hello_seq):
+            sock.connect(("127.0.0.1", self.port))
+            sock.settimeout(0.2)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                sock.send(packet(3, hello_seq))
+                try:
+                    if sock.recv(100) == packet(4, hello_seq):
+                        return
+                except (socket.timeout, ConnectionRefusedError):
+                    pass
+            self.fail("Could not establish development peer session")
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender, \\
+             socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
+            connect_peer(sender, 100)
+            connect_peer(receiver, 101)
+            receiver.settimeout(0.5)
+            sender.send(movement(1, 0, 1.0, 10.0))
+            received = receiver.recv(100)
+            self.assertEqual(len(received), 34)
+            header, version, ptype, seq, peer_id, timestamp, x, y, z = \\
+                struct.unpack("<4sBBIIdfff", received)
+            self.assertEqual((header, version, ptype, seq), (b"BZC0", 1, 5, 1))
+            self.assertGreater(peer_id, 0)
+            self.assertEqual((timestamp, x, y, z), (1.0, 10.0, 0.0, 0.0))
+
+            # A client cannot impersonate another peer by choosing an ID.
+            sender.send(movement(2, peer_id, 1.05, 10.5))
+            with self.assertRaises(socket.timeout):
+                receiver.recv(100)
+
+            # A replay of an old sequence must not be relayed.
+            sender.send(movement(1, 0, 1.10, 11.0))
+            with self.assertRaises(socket.timeout):
+                receiver.recv(100)
+
+            # Large implausible speed must not be relayed.
+            sender.send(movement(2, 0, 1.15, 5000))
+            with self.assertRaises(socket.timeout):
+                receiver.recv(100)
+
+            time.sleep(0.06)
+            sender.send(movement(2, 0, 1.20, 10.5))
+            received = receiver.recv(100)
+            _, _, _, seq, peer_id2, _, x, _, _ = struct.unpack(
+                "<4sBBIIdfff", received)
+            self.assertEqual((seq, peer_id2, x), (2, peer_id, 10.5))
+
     def test_handshake_and_ping(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.connect(("127.0.0.1", self.port))
