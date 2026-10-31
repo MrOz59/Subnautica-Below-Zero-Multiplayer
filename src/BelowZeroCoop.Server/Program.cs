@@ -4,9 +4,15 @@ using BelowZeroCoop.Protocol;
 
 namespace BelowZeroCoop.Server;
 
+/// <summary>
+/// Local development handshake/Ping responder. Not yet an authenticated
+/// multiplayer server and should not be exposed to untrusted networks.
+/// </summary>
 internal static class Program
 {
     private const int DefaultPort = 27021;
+    private const int MaxSessions = 32;
+    private static readonly TimeSpan SessionTimeout = TimeSpan.FromSeconds(30);
 
     public static async Task<int> Main(string[] args)
     {
@@ -15,20 +21,22 @@ internal static class Program
 
         for (int i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--help" || args[i] == "-h")
+            if (args[i] is "--help" or "-h")
             {
                 ShowHelp();
                 return 0;
             }
 
-            if (args[i] == "--bind" && ++i < args.Length && IPAddress.TryParse(args[i], out IPAddress? parsed))
+            if (args[i] == "--bind" && i + 1 < args.Length &&
+                IPAddress.TryParse(args[++i], out IPAddress? parsed))
             {
                 bindAddress = parsed;
                 continue;
             }
 
-            if (args[i] == "--port" && ++i < args.Length &&
-                int.TryParse(args[i], out int parsedPort) && parsedPort >= 1 && parsedPort <= 65535)
+            if (args[i] == "--port" && i + 1 < args.Length &&
+                int.TryParse(args[++i], out int parsedPort) &&
+                parsedPort is >= 1 and <= 65535)
             {
                 port = parsedPort;
                 continue;
@@ -46,11 +54,12 @@ internal static class Program
         };
 
         using var server = new UdpClient(new IPEndPoint(bindAddress, port));
-        Console.WriteLine("BelowZeroCoop network probe listening on " + bindAddress + ":" + port);
+        var sessions = new Dictionary<IPEndPoint, DateTime>();
+        Console.WriteLine("BelowZeroCoop development server at " + bindAddress + ":" + port);
         Console.WriteLine("Protocol v" + PacketCodec.WireVersion + ". CTRL+C to stop.");
-        Console.WriteLine("This is not yet a playable game server.");
+        Console.WriteLine("Development probe only: no player data and no authentication.");
         if (!IPAddress.IsLoopback(bindAddress))
-            Console.WriteLine("WARNING: no authentication yet. Use only on a trusted LAN; never expose this port to the internet.");
+            Console.WriteLine("WARNING: untrusted network exposure is NOT supported.");
 
         while (!shutdown.IsCancellationRequested)
         {
@@ -65,20 +74,43 @@ internal static class Program
             }
             catch (SocketException ex)
             {
-                Console.Error.WriteLine("UDP error: " + ex.SocketErrorCode);
+                Console.Error.WriteLine("UDP receive error: " + ex.SocketErrorCode);
                 continue;
             }
 
             if (!PacketCodec.TryDecode(message.Buffer, out Packet packet))
                 continue;
 
-            if (packet.Type != PacketType.Ping)
+            DateTime now = DateTime.UtcNow;
+            Packet? reply = null;
+
+            if (packet.Type == PacketType.Hello)
+            {
+                foreach (var old in sessions.Where(x => now - x.Value > SessionTimeout)
+                                            .Select(x => x.Key).ToArray())
+                    sessions.Remove(old);
+
+                if (sessions.Count < MaxSessions || sessions.ContainsKey(message.RemoteEndPoint))
+                {
+                    sessions[message.RemoteEndPoint] = now;
+                    reply = new Packet(PacketType.HelloAck, packet.Sequence);
+                }
+            }
+            else if (packet.Type == PacketType.Ping &&
+                     sessions.TryGetValue(message.RemoteEndPoint, out DateTime lastSeen) &&
+                     now - lastSeen <= SessionTimeout)
+            {
+                sessions[message.RemoteEndPoint] = now;
+                reply = new Packet(PacketType.Pong, packet.Sequence);
+            }
+
+            if (!reply.HasValue)
                 continue;
 
-            byte[] reply = PacketCodec.Encode(new Packet(PacketType.Pong, packet.Sequence));
             try
             {
-                await server.SendAsync(reply, message.RemoteEndPoint, shutdown.Token);
+                byte[] response = PacketCodec.Encode(reply.Value);
+                await server.SendAsync(response, message.RemoteEndPoint, shutdown.Token);
             }
             catch (OperationCanceledException)
             {
@@ -86,7 +118,7 @@ internal static class Program
             }
             catch (SocketException ex)
             {
-                Console.Error.WriteLine("UDP send failed: " + ex.SocketErrorCode);
+                Console.Error.WriteLine("UDP send error: " + ex.SocketErrorCode);
             }
         }
 
@@ -96,6 +128,6 @@ internal static class Program
     private static void ShowHelp()
     {
         Console.WriteLine("Usage: dotnet BelowZeroCoop.Server.dll [--bind 127.0.0.1] [--port 27021]");
-        Console.WriteLine("Use --bind 0.0.0.0 only on a trusted private LAN.");
+        Console.WriteLine("This is an unauthenticated localhost development probe, not a public multiplayer server.");
     }
 }
