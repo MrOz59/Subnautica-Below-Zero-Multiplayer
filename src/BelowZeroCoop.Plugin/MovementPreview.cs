@@ -67,6 +67,17 @@ namespace BelowZeroCoop.Plugin
                 peer.Visual = CreateVisual(packet.PeerId);
         }
 
+        internal void OnPeerLeft(uint peerId)
+        {
+            RemotePeer peer;
+            if (!remotePeers.TryGetValue(peerId, out peer))
+                return;
+
+            if (peer.Visual != null)
+                UnityEngine.Object.Destroy(peer.Visual);
+            remotePeers.Remove(peerId);
+        }
+
         internal void Tick(float now, Action<MovementDatagram> transmit)
         {
             var player = global::Player.main;

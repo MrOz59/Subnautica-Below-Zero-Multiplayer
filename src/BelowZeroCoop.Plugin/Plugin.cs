@@ -12,7 +12,7 @@ namespace BelowZeroCoop.Plugin
     /// Minimal BepInEx entry point and non-blocking network connectivity probe.
     /// Game state replication is intentionally not implemented yet.
     /// </summary>
-    [BepInPlugin("dev.belowzerocoop.plugin", "BelowZeroCoop", "0.2.0")]
+    [BepInPlugin("dev.belowzerocoop.plugin", "BelowZeroCoop", "0.3.0")]
     public sealed class Plugin : BaseUnityPlugin
     {
         private const float HelloRetrySeconds = 2f;
@@ -31,6 +31,7 @@ namespace BelowZeroCoop.Plugin
         private string activeHost;
         private int activePort;
         private bool handshakeComplete;
+        private uint assignedPeerId;
         private bool awaitingPong;
         private uint sequence;
         private uint lastHelloSequence;
@@ -208,7 +209,8 @@ namespace BelowZeroCoop.Plugin
                     MovementDatagram movement;
                     if (MovementWireCodec.TryDecode(bytes, out movement))
                     {
-                        if (handshakeComplete && enableMovementPreview.Value)
+                        if (handshakeComplete && enableMovementPreview.Value &&
+                            movement.PeerId != assignedPeerId)
                             movementPreview.OnPosition(movement, receivedAt);
                         continue;
                     }
@@ -216,10 +218,23 @@ namespace BelowZeroCoop.Plugin
                     Packet packet;
                     if (!PacketCodec.TryDecode(bytes, out packet))
                         continue;
+                    if (packet.Type == PacketType.Welcome && handshakeComplete)
+                    {
+                        assignedPeerId = packet.Sequence;
+                        continue;
+                    }
+
+                    if (packet.Type == PacketType.PeerLeft && handshakeComplete)
+                    {
+                        movementPreview.OnPeerLeft(packet.Sequence);
+                        continue;
+                    }
+
                     if (packet.Type == PacketType.HelloAck &&
                         !handshakeComplete && packet.Sequence == lastHelloSequence)
                     {
                         handshakeComplete = true;
+                        assignedPeerId = 0;
                         awaitingPong = false;
                         missedPongs = 0;
                         nextPingAt = receivedAt;
@@ -305,10 +320,27 @@ namespace BelowZeroCoop.Plugin
         {
             if (socket != null)
             {
+                // Best-effort clean departure. In case of abrupt termination,
+                // the server still expires the session automatically.
+                if (handshakeComplete)
+                {
+                    try
+                    {
+                        byte[] goodbye = PacketCodec.Encode(
+                            new Packet(PacketType.Goodbye, NextSequence()));
+                        socket.Send(goodbye, goodbye.Length);
+                    }
+                    catch (Exception)
+                    {
+                        // Shutdown must never throw from Unity callbacks.
+                    }
+                }
+
                 socket.Close();
                 socket = null;
             }
 
+            assignedPeerId = 0;
             activeHost = null;
             activePort = 0;
             handshakeComplete = false;
