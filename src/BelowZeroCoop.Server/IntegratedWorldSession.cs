@@ -45,6 +45,32 @@ internal sealed class IntegratedWorldSession : IDisposable
                     !root.RootElement.TryGetProperty("Fabrication", out _) ||
                     !root.RootElement.TryGetProperty("World", out _))
                     throw new InvalidDataException("Incomplete integrated snapshot");
+                // A syntactically valid partial JSON object must not silently
+                // reset stored energy, job receipts or world contents.
+                RequireFields(root.RootElement.GetProperty("Construction"),
+                    "Version", "Revision", "Nodes", "Links", "Receipts", "Changes");
+                RequireFields(root.RootElement.GetProperty("Power"),
+                    "Version", "GridId", "ConfigRevision", "CapacityMilliUnits",
+                    "EnergyMilliUnits", "LastTickMs", "GeneratorRemainder",
+                    "ConsumerRemainder", "TotalUnservedMilliUnits",
+                    "TotalSpilledMilliUnits", "Devices", "Receipts");
+                RequireFields(root.RootElement.GetProperty("Fabrication"),
+                    "Version", "Revision", "Stations", "Jobs", "Inventories", "Grants");
+                RequireFields(root.RootElement.GetProperty("World"),
+                    "Version", "Revision", "Entities", "Receipts", "Changes");
+
+                RequireRecords(root.RootElement.GetProperty("Power"),
+                    "Devices", "Id", "Generation", "Role",
+                    "RateMilliUnitsPerSecond", "Deleted");
+                RequireRecords(root.RootElement.GetProperty("Fabrication"),
+                    "Jobs", "Id", "StationId", "StationGeneration", "OwnerId",
+                    "OutputItemId", "Status", "ReservedIngredients");
+                RequireRecords(root.RootElement.GetProperty("Fabrication"),
+                    "Inventories", "ActorId", "Materials", "OwnedItems");
+                RequireRecords(root.RootElement.GetProperty("Construction"),
+                    "Nodes", "Id", "Generation", "Revision", "Kind",
+                    "Volume", "Deleted");
+
                 input.Position = 0;
                 document = JsonSerializer.Deserialize<IntegratedWorldDocument>(input)
                     ?? throw new InvalidDataException("Empty integrated snapshot");
@@ -419,6 +445,23 @@ internal sealed class IntegratedWorldSession : IDisposable
                     x.Id == node.Id && x.Generation == node.Generation && !x.Deleted))
                 throw new InvalidDataException("Live Fabricator missing station");
         }
+    }
+
+    private static void RequireFields(JsonElement element, params string[] fields)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            fields.Any(field => !element.TryGetProperty(field, out _)))
+            throw new InvalidDataException("Incomplete integrated domain document");
+    }
+
+    private static void RequireRecords(JsonElement parent, string collection,
+        params string[] required)
+    {
+        if (!parent.TryGetProperty(collection, out JsonElement items) ||
+            items.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("Invalid integrated record list");
+        foreach (JsonElement record in items.EnumerateArray())
+            RequireFields(record, required);
     }
 
     private static bool PowerCompatible(string kind, PowerRole role) =>
