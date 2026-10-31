@@ -83,6 +83,53 @@ DateTime now = new(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
           "cannot claim nonexistent object");
 }
 
+// Upstream #82 across a restart: a deleted entity's tombstone must survive
+// disk persistence and must prevent old item packets from reviving its content.
+{
+    var world = new WorldState();
+    Guid id = Guid.NewGuid();
+    WorldResult built = world.Apply(Build(10, id), now);
+    Check(world.TryAcquireLease(id, 10, now, TimeSpan.FromSeconds(10)),
+          "claim bioreactor before crash");
+    WorldResult stored = world.Apply(
+        Change(10, id, 1, built.Revision, "Fish", 4), now);
+    WorldResult deleted = world.Apply(
+        Destroy(10, id, 1, stored.Revision), now);
+    Check(deleted.Applied, "tombstone committed before restart");
+
+    string dir = Path.Combine(Path.GetTempPath(),
+        "belowzerocoop-rebuild-" + Guid.NewGuid().ToString("N"));
+    string path = Path.Combine(dir, "world.json");
+    try
+    {
+        WorldStore.Save(path, world);
+        var restored = WorldStore.Load(path);
+        Check(Get(restored, id).Deleted, "tombstone persisted across restart");
+        Check(Get(restored, id).Items.Count == 0,
+              "destroyed inventory not retained");
+        Check(!restored.Apply(Change(10, id, 1, stored.Revision,
+                                    "Fish", 1), now).Applied,
+              "stale fish packet rejected after restart");
+
+        WorldResult rebuilt = restored.Apply(
+            Build(20, id, 2, deleted.Revision), now);
+        Check(rebuilt.Applied, "rebuild after restart accepted");
+        Check(Get(restored, id).Items.Count == 0,
+              "rebuild after restart starts with empty inventory");
+
+        WorldStore.Save(path, restored);
+        var secondRestart = WorldStore.Load(path);
+        Check(Get(secondRestart, id).Generation == 2 &&
+              Get(secondRestart, id).Items.Count == 0,
+              "second restart cannot resurrect the old generation");
+    }
+    finally
+    {
+        if (Directory.Exists(dir))
+            Directory.Delete(dir, recursive: true);
+    }
+}
+
 // Upstream #85: deterministic snapshots must survive saving and late joins.
 {
     var state = new WorldState();
