@@ -37,6 +37,7 @@ internal static class ConstructionTopologyTests
         DeterministicReplayAndGenerationRecovery();
         ConcurrentRemovalAndLinkCannotRace();
         DamagedTopologyIsRejected();
+        BoundedChangesRequireResnapshot();
         Console.WriteLine("Construction removal regressions (#6/#10/#12/#79/#80) passed.");
     }
 
@@ -272,6 +273,46 @@ internal static class ConstructionTopologyTests
         Check(tasks.Count(task => task.Result) == 1,
               "only one concurrent topology mutation with same revision can commit");
         ConstructionState.Restore(second.Snapshot());
+    }
+
+    private static void BoundedChangesRequireResnapshot()
+    {
+        var world = new ConstructionState();
+        Guid a = Guid.NewGuid(), b = Guid.NewGuid();
+        Check(Place(world, a, "Room", 0).Applied, "create base for delta pressure");
+        Check(Place(world, b, "PowerTransmitter", 10).Applied,
+              "create transmitter for delta pressure");
+        long revision = world.Snapshot().Revision;
+        for (int i = 0; i < ConstructionState.MaxChanges + 10; ++i)
+        {
+            ConstructionResult changed = i % 2 == 0
+                ? world.Connect(Guid.NewGuid(), revision, a, 1, b, 1,
+                    ConstructionLinkKind.Power)
+                : world.Disconnect(Guid.NewGuid(), revision, a, b,
+                    ConstructionLinkKind.Power);
+            Check(changed.Applied, "network topology mutation under load");
+            revision = changed.Revision;
+        }
+
+        Check(!world.TryChangesSince(0, out _),
+              "too-old clients must request a new topology snapshot");
+        Check(world.TryChangesSince(revision - 2,
+            out List<ConstructionChange> lastTwo) && lastTwo.Count == 2,
+              "recent deltas remain recoverable");
+        Check(lastTwo[0].Revision == revision - 1 &&
+              lastTwo[1].Revision == revision &&
+              lastTwo[0].Added.Count == 1 &&
+              lastTwo[1].Removed.Count == 1,
+              "ordered revisions retain independent link changes");
+        Check(world.Snapshot().Changes.Count == ConstructionState.MaxChanges,
+              "topology history remains bounded");
+
+        var damaged = world.Snapshot();
+        damaged.Changes[0].Revision += 20;
+        bool refused = false;
+        try { ConstructionState.Restore(damaged); }
+        catch (InvalidDataException) { refused = true; }
+        Check(refused, "noncontiguous topology delta history is rejected");
     }
 
     private static void DamagedTopologyIsRejected()
