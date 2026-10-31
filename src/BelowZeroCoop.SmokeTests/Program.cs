@@ -29,4 +29,19 @@ Check(PacketCodec.TryDecode(pong, out Packet decodedPong), "pong parsed");
 Check(decodedPong.Type == PacketType.Pong && decodedPong.Sequence == uint.MaxValue,
       "sequence max supported");
 
+
+var hello = PacketCodec.Encode(new Packet(PacketType.Hello, 42));
+Check(PacketCodec.TryDecode(hello, out Packet decodedHello), "hello decoded");
+Check(decodedHello.Type == PacketType.Hello && decodedHello.Sequence == 42, "hello roundtrip");
+var ack = PacketCodec.Encode(new Packet(PacketType.HelloAck, 42));
+Check(PacketCodec.TryDecode(ack, out Packet decodedAck), "ack decoded");
+Check(decodedAck.Type == PacketType.HelloAck && decodedAck.Sequence == 42, "ack roundtrip");
+foreach (byte invalid in new byte[] { 0, 5, 254, 255 })
+{
+    var malformed = (byte[])hello.Clone();
+    malformed[5] = invalid;
+    Check(!PacketCodec.TryDecode(malformed, out _), "unknown type rejected");
+}
+Check(!PacketCodec.TryDecode(new byte[PacketCodec.PacketLength + 1], out _),
+      "oversized packet rejected");
 Console.WriteLine("Protocol smoke tests passed.");
