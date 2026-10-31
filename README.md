@@ -10,10 +10,10 @@ BOT Benson mod. Original project's restrictive notice is not a license grant.
 - Detection of installed Steam copies, including custom Steam libraries.
 - BepInEx setup checks and safe deployment of our compiled plugin assemblies.
 - Linux via Steam + Proton, with a documented winhttp DLL override.
-- Independent versioned UDP protocol for Ping/Pong.
-- A .NET 8 test server for the protocol.
+- Independent versioned UDP Hello/HelloAck and Ping/Pong protocol.
+- A .NET 8 development server with expiring probe sessions.\n- Portable movement interpolation ready for future player replication.
 - A minimal BepInEx 5 Unity Mono plugin that can ping the test server.
-- Automated launcher tests and .NET protocol/server CI.
+- Installer rollback, protocol and real UDP integration tests in CI.
 
 NOT implemented: multiplayer entities, world replication, inventory, saves,
 authentication, player spawning, vehicles, authoritative gameplay, discovery,
@@ -24,7 +24,7 @@ automatic BepInEx downloads, Epic launching, or production security.
 1. Own/install Subnautica: Below Zero through Steam (appid 848450).
 2. Install **Windows x64** BepInEx 5 into the Windows game directory (Proton runs the Windows game).
 3. In Steam, set the game's launch options to:
-   WINEDLLOVERRIDES="winhttp=n,b" %command%
+   WINEDLLOVERRIDES="winhttp.dll=n,b" %command%
 4. Install Python 3, including Tkinter (python3-tk on many Linux distros), and .NET SDK 8.
 5. Build the plugin with local BepInEx and the game's Unity Mono assemblies:
    dotnet build src/BelowZeroCoop.Plugin/BelowZeroCoop.Plugin.csproj -c Release -p:BepInExCore=/game/BepInEx/core -p:GameManaged=/game/SubnauticaZero_Data/Managed
@@ -59,7 +59,7 @@ BepInEx and Unity/game assemblies are not bundled in the repository.
 - src/BelowZeroCoop.Protocol/: original network wire format.
 - src/BelowZeroCoop.Server/: development server, loopback by default.
 - src/BelowZeroCoop.Plugin/: BepInEx mod entry point.
-- src/BelowZeroCoop.SmokeTests/: wire format tests.
+- src/BelowZeroCoop.SmokeTests/: packet format and interpolation tests.
 - docs/: Linux details, planned milestones and third-party dependencies.
 
 Use this branch for all new development. No game or BOT Benson code is copied.
