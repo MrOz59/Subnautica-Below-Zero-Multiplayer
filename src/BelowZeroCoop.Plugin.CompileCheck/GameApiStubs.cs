@@ -2,8 +2,60 @@
 // in production builds; validate the real plugin with game/BepInEx DLLs.
 using System;
 
+// Minimal stand-in for Subnautica Below Zero's Player.main in Assembly-CSharp.
+public sealed class Player
+{
+    public static Player main { get; set; }
+    public UnityEngine.Transform transform { get; } = new UnityEngine.Transform();
+}
+
 namespace UnityEngine
 {
+    public class Object
+    {
+        public static void Destroy(Object value) { }
+    }
+
+    public enum PrimitiveType { Capsule }
+
+    public sealed class Vector3
+    {
+        public float x;
+        public float y;
+        public float z;
+
+        public Vector3(float x, float y, float z)
+        {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+    }
+
+    public sealed class Transform
+    {
+        public Vector3 position { get; set; } = new Vector3(0, 0, 0);
+        public Vector3 localScale { get; set; } = new Vector3(1, 1, 1);
+    }
+
+    public sealed class Collider : Object { }
+
+    public sealed class GameObject : Object
+    {
+        public string name { get; set; }
+        public Transform transform { get; } = new Transform();
+
+        public static GameObject CreatePrimitive(PrimitiveType type)
+        {
+            return new GameObject();
+        }
+
+        public T GetComponent<T>() where T : class
+        {
+            return null;
+        }
+    }
+
     public class MonoBehaviour { }
 
     public static class Time

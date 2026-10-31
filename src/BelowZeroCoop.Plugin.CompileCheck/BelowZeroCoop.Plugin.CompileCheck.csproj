@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../BelowZeroCoop.Protocol/BelowZeroCoop.Protocol.csproj" />
     <Compile Include="../BelowZeroCoop.Plugin/Plugin.cs" Link="Plugin.cs" />
+    <Compile Include="../BelowZeroCoop.Plugin/MovementPreview.cs" Link="MovementPreview.cs" />
     <Compile Include="GameApiStubs.cs" />
   </ItemGroup>
 </Project>
