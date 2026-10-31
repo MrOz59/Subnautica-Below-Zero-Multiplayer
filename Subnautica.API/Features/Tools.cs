@@ -605,10 +605,8 @@
                     return true;
                 }
 
-                if (File.Exists(string.Format("{0}winhttp.dll", gamePath)))
-                {
-                    return true;
-                }
+                // Do not treat generic DLLs such as winhttp.dll as proof of
+                // BepInEx: unrelated compatibility fixes may install them.
 
                 if (Directory.Exists(string.Format("{0}BepInEx", gamePath)))
                 {
