@@ -187,7 +187,7 @@ def install_plugin(game_dir: Path, plugin_file: Path, protocol_file: Path, force
                 results.append("Unchanged: " + name)
                 continue
             if not force:
-                raise FileExistsError("Different version already installed: " + target +
+                raise FileExistsError("Different version already installed: " + str(target) +
                                       " (use --force to make a backup and update)")
             suffix = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             backup = target.with_name(target.name + "." + suffix + ".bak")
