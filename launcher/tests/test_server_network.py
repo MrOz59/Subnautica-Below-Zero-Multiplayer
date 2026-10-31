@@ -48,19 +48,24 @@ class ServerNetworkTests(unittest.TestCase):
                 try:
                     sock.recv(100)
                     self.fail("Unauthenticated probe responded to ping")
-                except socket.timeout:
+                except (socket.timeout, ConnectionRefusedError):
                     pass
+
+                # The .NET process may not have bound its socket yet.
+                if self.process.poll() is not None:
+                    self.fail("Server exited before it could complete a handshake")
 
                 sock.send(packet(3, 12))  # Hello
                 try:
                     data = sock.recv(100)
                     if data == packet(4, 12):  # HelloAck
                         break
-                except socket.timeout:
+                except (socket.timeout, ConnectionRefusedError):
                     pass
 
                 if time.monotonic() >= deadline:
-                    self.fail("Server did not respond to hello")
+                    self.fail("Server did not respond to hello within five seconds")
+                time.sleep(0.1)
 
             sock.send(packet(1, 13))
             self.assertEqual(sock.recv(100), packet(2, 13))
