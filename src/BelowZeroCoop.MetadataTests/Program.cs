@@ -236,10 +236,10 @@ static PowerCommand Device(long revision, PowerAction action,
         Check(File.Exists(path + ".bak"),
               "previous complete power metadata saved as a backup");
         File.WriteAllText(path, "{ bad json");
-        bool corrupt = false;
+        bool powerFileCorrupt = false;
         try { GameplayStore.LoadPower(path); }
-        catch (InvalidDataException) { corrupt = true; }
-        Check(corrupt, "invalid power JSON cannot silently reset grid");
+        catch (InvalidDataException) { powerFileCorrupt = true; }
+        Check(powerFileCorrupt, "invalid power JSON cannot silently reset grid");
         Check(GameplayStore.LoadPower(path + ".bak").Snapshot().EnergyMilliUnits == 8000,
               "explicit power backup remains recoverable");
     }
