@@ -1,0 +1,22 @@
+# Independent BelowZeroCoop project
+**/bin/
+**/obj/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.vscode/
+.idea/
+*.user
+*.suo
+*.log
+.env
+dist/
+build/
+local/
+external/
+*.zip
+*.7z
+*.dll
+*.exe
+!*.dll.config

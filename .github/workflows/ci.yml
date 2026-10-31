@@ -1,0 +1,36 @@
+name: independent-project-ci
+
+on:
+  push:
+    branches:
+      - rewrite/belowzero-coop
+  pull_request:
+    branches:
+      - rewrite/belowzero-coop
+  workflow_dispatch:
+
+jobs:
+  launcher:
+    name: Python launcher tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m compileall -q launcher
+      - run: python -m unittest discover -s launcher/tests -v
+
+  protocol-and-server:
+    name: .NET 8 protocol and server build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet build src/BelowZeroCoop.Server/BelowZeroCoop.Server.csproj --configuration Release
+      - run: dotnet run --project src/BelowZeroCoop.SmokeTests/BelowZeroCoop.SmokeTests.csproj --configuration Release
+
+# The Unity plugin needs BepInEx and game assemblies supplied by the owner;
+# do not download, publish or redistribute the proprietary game binaries in CI.
