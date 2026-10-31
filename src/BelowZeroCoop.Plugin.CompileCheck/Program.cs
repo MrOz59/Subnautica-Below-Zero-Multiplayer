@@ -34,8 +34,13 @@ Require(output.Count == 3 && output[2].Sequence == 3,
 
 // Simulate peer creation and removal without running any real game methods.
 int destroyedBefore = UnityEngine.Object.DestroyedCount;
+int createdBefore = UnityEngine.GameObject.CreatedCount;
 preview.OnPosition(new MovementDatagram(1, 5, 0.10, 3f, 0f, 4f), 0.25f);
-preview.Tick(0.26f, Publish);
+preview.OnPosition(new MovementDatagram(1, 5, 0.10, 3f, 0f, 4f), 0.25f);
+preview.OnPosition(new MovementDatagram(2, 5, 0.15, 3.2f, 0f, 4f), 0.30f);
+Require(UnityEngine.GameObject.CreatedCount == createdBefore + 1,
+        "repeated movement for one peer never creates duplicate avatars");
+preview.Tick(0.31f, Publish);
 preview.OnPeerLeft(5);
 Require(UnityEngine.Object.DestroyedCount == destroyedBefore + 1,
         "PeerLeft immediately destroys the temporary remote capsule");
@@ -45,4 +50,18 @@ Require(UnityEngine.Object.DestroyedCount == destroyedBefore + 1,
 preview.Tick(10.5f, Publish);
 preview.Reset();
 
-Console.WriteLine("Plugin syntax and fake-Unity preview lifecycle checks passed.");
+// Original #64: merely loading our BepInEx plugin must not alter
+// or contact anything while the opt-in network preview is disabled.
+var plugin = new BelowZeroCoop.Plugin.Plugin();
+const System.Reflection.BindingFlags privateInstance =
+    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+var awake = plugin.GetType().GetMethod("Awake", privateInstance);
+var update = plugin.GetType().GetMethod("Update", privateInstance);
+Require(awake != null && update != null, "plugin lifecycle callbacks exist");
+int visualsBeforeSingleplayer = UnityEngine.GameObject.CreatedCount;
+awake.Invoke(plugin, null);
+update.Invoke(plugin, null);
+Require(UnityEngine.GameObject.CreatedCount == visualsBeforeSingleplayer,
+        "disabled plugin must not spawn remote objects in singleplayer");
+
+Console.WriteLine("Plugin syntax, disabled-singleplayer and fake-Unity lifecycle tests passed.");

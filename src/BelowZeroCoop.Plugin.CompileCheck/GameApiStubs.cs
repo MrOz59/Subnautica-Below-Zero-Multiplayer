@@ -47,11 +47,13 @@ namespace UnityEngine
 
     public sealed class GameObject : Object
     {
+        public static int CreatedCount { get; private set; }
         public string name { get; set; }
         public Transform transform { get; } = new Transform();
 
         public static GameObject CreatePrimitive(PrimitiveType type)
         {
+            CreatedCount++;
             return new GameObject();
         }
 

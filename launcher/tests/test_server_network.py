@@ -1,6 +1,8 @@
 """Black-box integration tests for the unauthenticated local dev server."""
 from pathlib import Path
 import shutil
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 import socket
 import struct
 import subprocess
@@ -95,6 +97,25 @@ class ServerNetworkTests(unittest.TestCase):
             sock.send(control(GOODBYE, 99))
         except OSError:
             pass
+
+    def test_concurrent_joins_have_unique_identities(self):
+        # Historical upstream issue #63: two simultaneous joins could
+        # prevent anyone from entering the session.
+        count = 4
+        barrier = Barrier(count)
+
+        def enter(index):
+            with self.make_socket() as connection:
+                barrier.wait(timeout=5)
+                peer_id = self.join(connection, 500 + index)
+                self.leave(connection)
+                return peer_id
+
+        with ThreadPoolExecutor(max_workers=count) as pool:
+            identities = list(pool.map(enter, range(count)))
+
+        self.assertEqual(len(identities), count)
+        self.assertEqual(len(set(identities)), count)
 
     def test_handshake_and_ping(self):
         with self.make_socket() as client:
