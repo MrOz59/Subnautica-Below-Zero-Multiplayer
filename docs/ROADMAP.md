@@ -134,3 +134,18 @@ playability until gameplay replication is implemented and tested.
       scripting and application of remote network events.
 - [ ] Create authenticated gameplay events only after those validations;
       no debug observer records may mutate authoritative state.
+
+## Verified-game-ID transaction boundary
+
+- [x] Introduce append-only, deterministic, world-scoped game string
+      ID to internal GUID mapping (not a volatile Unity hash).
+- [x] Persist map in integrated schema v3 with fail-closed integrity
+      checks and in-memory migration from prior schema v2.
+- [x] Add host-only `PlaceObserved` with explicit provenance gate,
+      transactional ID allocation and construction/world updates.
+- [x] CI covers duplicate IDs, world scope isolation, capacity, tampered
+      mappings, restart/rebuild, failed save and rejected unverified origin.
+- [ ] Replace the development world scope with the actual verified save ID,
+      and detect genuine source/provenance from game hooks.
+- [ ] Integrate authenticated events; passive observations MUST NOT
+      call `PlaceObserved` directly.

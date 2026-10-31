@@ -176,3 +176,14 @@ the probe looks for an enclosing `ConstructableBase` and keeps the
 parent-base ID separate. All observations keep `origin=unknown` and
 **never** become server world/build events. Real game API validation,
 source attribution and game save integration remain pending.
+
+## Game UID to world-entity mapping
+
+A trusted-host-only `GameEntityIdentityMap` and `PlaceObserved` path now
+link verified game object IDs to stable internal GUIDs in the **same**
+integrated snapshot. Unlike temporary Unity object hashes, the ID is stable
+across restarts and isolated by a configured scope; existing schema v2
+development snapshots can be read and upgraded in memory. Loading/replayed
+events are explicitly rejected. The Harmony hooks still report unknown
+origin and **do not invoke this path**, so this is not live multiplayer
+construction or a change to the game's saves.

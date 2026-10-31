@@ -140,3 +140,44 @@ gameplay integration, and does **not** prove real game/Proton compatibility.
 - No real BepInEx/Unity assembly validation, physical-player occupancy
   callbacks, reliable gameplay events or Windows/Linux Proton multiplayer
   playtest has been completed.
+
+## Stable game-object identity map (schema v3)
+
+`GameEntityIdentityMap` provides an append-only game-to-server identity bridge
+for a future **trusted** runtime adapter. A verified game-owned string
+`UniqueIdentifier.Id` is combined with the configured world/session scope
+(currently represented by the development `gridId` parameter) and hashed
+with SHA-256 into a stable internal `Guid`. The result is deterministic
+across restart, different for different scopes, case-sensitive, and does not
+depend on volatile Unity instance hashes or generated random IDs.
+
+The map is persisted **inside the same integrated snapshot** as
+`ConstructionState`, `WorldState`, `PowerGridState` and
+`FabricationState`. A failed build, stale revision or failed filesystem
+write cannot leave a committed identity mapping with no construction.
+
+`PlaceObserved` requires `ConstructionEventProvenance.VerifiedLocalBuild`
+explicitly supplied by **trusted host code**, and rejects `Unknown`,
+`SaveLoading` and `RemoteReplay` before creating any mappings. These are
+trust-boundary declarations, **not** proof supplied by the passive Unity
+observers. They still report `origin=unknown`, and no network path calls
+this method.
+
+The map has a strict cap of 2048 entries, no eviction, rebind idempotence,
+collision rejection, and restore-time verification of every derived GUID,
+monotonic creation revision, source uniqueness and world scope. Tombstones
+and rebuild generations reuse the same bound entity GUID when the game UID
+has not changed.
+
+Schema v2 composite files load using an **empty map** and are upgraded to
+v3 in memory; the next successful mutation saves schema v3. No guesses are
+made for the IDs of previously existing entities. Backups remain explicit.
+
+The scope currently derives from the integrated session's grid identifier:
+this is a developer approximation, not a validated identifier for an actual
+Below Zero save slot. A future game adapter must establish a stable world
+namespace, game UID lifetime semantics, generation mapping, and verified
+provenance before any `PlaceObserved` call can be enabled in gameplay.
+
+The game observer does **not** call `PlaceObserved`. This work only
+prepares the transaction boundary.

@@ -285,3 +285,17 @@ including missing identities, partial progress, bad coordinates,
 temporary ghost IDs, parent base IDs and valid candidate piece IDs.
 It **cannot** prove that all real game builds expose exactly these
 members. The scanner and observers simply skip unavailable data.
+
+## Host-side game UID mapping (standalone)
+
+The server now contains `GameEntityIdentityMap`, an append-only mapping of
+verified raw game IDs to stable, scoped internal GUIDs. It is stored
+transactionally inside `IntegratedWorldSession` (schema v3). The host's
+`PlaceObserved` route rejects unknown origin, save loading and remote
+replay. See [INTEGRATED_WORLD.md](INTEGRATED_WORLD.md).
+
+**No Unity event is yet marked as `VerifiedLocalBuild`**, and the
+read-only diagnostic hooks do not send or execute world mutations. The
+server's explicit provenance enum is a future integration boundary, not
+an automatic detection mechanism. Verifying real game event origin still
+requires gameplay testing and an authenticated server event pipeline.
