@@ -19,6 +19,10 @@ BOT Benson mod. Original project's restrictive notice is not a license grant.
 - A BepInEx 5 Unity Mono plugin that can optionally send a local position
   snapshot at 20 Hz and render other peers as noninteractive debug capsules.
 - Installer rollback, protocol and real UDP integration tests in CI.
+- Server-side **experimental** world-state library: revisioned UUID entities,
+  tombstones, inventory idempotency, expiring ownership leases, a bounded
+  change feed, and JSON snapshot persistence with manual backup recovery.
+  This is **not connected to actual gameplay or the UDP listener**.
 
 NOT implemented: actual player avatars, animation/vehicle/world replication,
 inventory, saves, authentication, real player spawning, authoritative gameplay,
@@ -57,6 +61,7 @@ Steam. No custom binary patching or store checks.
 python3 -m unittest discover -s launcher/tests -v
 dotnet run --project src/BelowZeroCoop.SmokeTests
 dotnet build src/BelowZeroCoop.Server -c Release
+dotnet run --project src/BelowZeroCoop.WorldTests -c Release
 
 The CI compiles our plugin *source* against temporary stub APIs. This does not
 prove compatibility with real Unity or BepInEx binaries.
@@ -68,7 +73,9 @@ BepInEx and Unity/game assemblies are not bundled in the repository.
 
 - launcher/: our launcher and local environment verification.
 - src/BelowZeroCoop.Protocol/: original network wire format.
-- src/BelowZeroCoop.Server/: development server, loopback by default.
+- src/BelowZeroCoop.Server/: development server, loopback by default,
+  plus standalone non-networked world persistence and ownership logic.
+- src/BelowZeroCoop.WorldTests/: construction and inventory regression tests.
 - src/BelowZeroCoop.Plugin/: BepInEx mod entry point.
 - src/BelowZeroCoop.SmokeTests/: packet format and interpolation tests.
 - src/BelowZeroCoop.Plugin.CompileCheck/: CI-only fake game API to syntax-check our plugin; never ship it.
@@ -84,7 +91,8 @@ BepInEx and Unity/game files are external dependencies. The original source
 tree at the repository's main branch has different authorship and restrictions:
 those files are not included in this branch.
 
-See docs/ARCHITECTURE.md, docs/ROADMAP.md, and
+See docs/ARCHITECTURE.md, docs/ROADMAP.md,
+[the shared-world safety design](docs/WORLD_STATE.md), and
 [the review of the original project's first 100 issues](docs/UPSTREAM_ISSUES_1-100.md).
 
 The CI includes regression cases inspired by early upstream reports: concurrent

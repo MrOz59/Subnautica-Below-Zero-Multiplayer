@@ -30,9 +30,9 @@ The independent codebase is not copied from the original project.
 
 | Source | Historical failure / requirement | Required design |
 |---|---|---|
-| [#77](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/77) | Construction becomes unusable after last interacting player logs out | Leased object ownership with expiry/transfer, not permanent locks |
-| [#82](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/82) | Bioreactor item persists after destroy-and-rebuild | Stable object identities + creation generations, delete tombstones, authoritative inventory transitions |
-| [#85](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/85) | Another player's construction missing after re-entry | Persist event journal and deterministic full state snapshot for late joins |
+| [#77](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/77) | Construction becomes unusable after last interacting player logs out | Standalone leased object ownership with expiry/transfer; integration pending |
+| [#82](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/82) | Bioreactor item persists after destroy-and-rebuild | Standalone UUID generations, tombstones, item transactions; integration pending |
+| [#85](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/85) | Another player's construction missing after re-entry | Detached full snapshots, bounded incremental deltas, local JSON persistence; durable journal and game integration pending |
 | [#6](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/6), [#10](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/10), [#12](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/12), [#79](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/79), [#80](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/80) | Illegal base changes, player collisions and construction remove/despawn errors | Check object preconditions and occupants on host; atomic builder transaction |
 | [#78](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/78) | Quickslots broke after metadata refactor | Versioned metadata schema, explicit migrations and round-trip tests |
 | [#13](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/13), [#81](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/81) | Energy production/consumption desync | Authoritative power graph, idempotent reconfiguration, time-delta integration |
@@ -67,3 +67,13 @@ The independent codebase is not copied from the original project.
 7. Ensure CI tests succeed without game binaries; later add opt-in manual verification with legitimate BepInEx + Below Zero assemblies.
 
 **Status:** first-round requirements audit, not a claim of reproducing or fixing the upstream bugs. Original maintainer marked many alpha items completed; the network-test checklist in #83 was closed as no longer necessary, not exhaustively checked.
+
+## Follow-up implementation: world-state foundations
+
+See [WORLD_STATE.md](WORLD_STATE.md). An independent, opt-in server-side
+world-state engine now covers these historical regressions in standalone tests:
+lease expiry/release (#77), destruction/rebuilding with cleared inventory and
+persistent tombstones (#82), late-join snapshot + ordered change catch-up with
+fallback when the bounded history is exhausted (#85). **This engine is not
+attached to real Subnautica construction or inventory hooks yet.** An
+authenticated event channel and gameplay authority checks remain prerequisites.

@@ -39,10 +39,15 @@ first-class runtime, while remaining compatible with Windows.
 
 ## M2 - World and vehicles
 
-- [ ] Entity identity and world object ownership.
+- [x] Standalone revisioned entity IDs, generations, ephemeral ownership leases
+      and idempotent commands (no game integration yet).
+- [x] Bounded incremental world-state changes and snapshot fallback for joins.
+- [x] JSON persistence and explicit previous-snapshot backup.
+- [x] Regressions for upstream #77, #82, #85, including restart recovery.
+- [ ] Integrate world events with authenticated game sessions and host checks.
 - [ ] Creature synchronization and server ownership.
 - [ ] Seatruck / Prawn / Snowfox state and transitions.
-- [ ] World save / deterministic reconciliation.
+- [ ] Game-specific world save integration, migration and deterministic reconciliation.
 - [ ] Checkpoints and compatibility migration.
 
 ## M3 - Production and launchers
