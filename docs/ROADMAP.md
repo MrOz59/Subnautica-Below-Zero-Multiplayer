@@ -118,3 +118,19 @@ playability until gameplay replication is implemented and tested.
       including actual return values, overloads and coroutine behavior.
 - [ ] Connect authenticated, host-authoritative observations to the
       integrated world transaction layer.
+
+## Candidate identity extraction
+
+- [x] Independent, off-by-default reflection snapshot for game
+      UniqueIdentifier.Id, techType, constructedAmount and world/local
+      position/rotation at observed method return.
+- [x] Separate temporary BaseGhost, constructed-piece candidate and parent
+      base IDs; reject absent/malformed IDs without inventing persistent IDs.
+- [x] CI covers partial/completed candidates, transforms, nonfinite data
+      and parent component lookup.
+- [ ] Validate actual game signatures, UID semantics and final base-grid
+      placement against legitimate Assembly-CSharp/Unity binaries.
+- [ ] Establish provenance: local player build versus save loading,
+      scripting and application of remote network events.
+- [ ] Create authenticated gameplay events only after those validations;
+      no debug observer records may mutate authoritative state.

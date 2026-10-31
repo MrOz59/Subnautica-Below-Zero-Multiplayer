@@ -97,3 +97,14 @@ targets and removes only its own Harmony Postfix patches on shutdown.
 The fake-Harmony tests cover install, observation, bounded storage, missing
 and ambiguous methods, independent mod patch preservation and cleanup.
 See [GAME_HOOKS_RESEARCH.md](GAME_HOOKS_RESEARCH.md).
+
+## Capturing construction metadata safely
+
+`ConstructionGameSnapshotProbe` reads candidate
+`UniqueIdentifier.Id`, `Constructable.constructedAmount` and transform
+members by reflection. It copies their values immediately rather than
+keeping Unity references in the bounded diagnostic queue.
+`BaseGhost` observations distinguish candidate piece identity from
+the parent base and temporary visual ghost. This is intentionally
+source-agnostic (`origin=unknown`) and cannot yet feed
+`IntegratedWorldSession` or the unauthenticated UDP server.

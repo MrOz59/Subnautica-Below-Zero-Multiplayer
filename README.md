@@ -165,3 +165,14 @@ See [game hook research](docs/GAME_HOOKS_RESEARCH.md).
 
 The CI tests use fake Unity/Harmony classes only; real game integration
 and method signature validation remain pending.
+
+## Diagnostic-only construction identity candidates
+
+The opt-in `ObserveBuildingHooks` path now copies candidate
+`UniqueIdentifier.Id`, tech type, construction progress and validated
+world/local transforms when those members are available. A
+`BaseGhost` is **not** assumed to be the permanently constructed piece;
+the probe looks for an enclosing `ConstructableBase` and keeps the
+parent-base ID separate. All observations keep `origin=unknown` and
+**never** become server world/build events. Real game API validation,
+source attribution and game save integration remain pending.

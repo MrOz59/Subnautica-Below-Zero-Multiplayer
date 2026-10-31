@@ -9,8 +9,9 @@ has an all-rights-reserved [LICENCE.md](https://github.com/ismail0234/Subnautica
 
 **Status:** Verified against declarations in the public original mod source,
 not yet against a legitimate locally installed game's
-`Assembly-CSharp.dll`. Names and overloads may have changed. No runtime
-Harmony patches were installed or validated by our plugin.
+`Assembly-CSharp.dll`. Names and overloads may have changed. The
+off-by-default passive observers exist, but have **not been verified in the
+real game**.
 
 ## First integration surface: construction and removal
 
@@ -236,3 +237,51 @@ stable game entity IDs and transforms via verified game APIs, distinguish
 local actions from replayed remote events and completed construction from
 partial progress, then feed *authenticated* server events into the
 `IntegratedWorldSession`. Until then this is **local instrumentation only**.
+
+## Candidate persistent identity and transform probe
+
+The optional Harmony observers now take an immutable diagnostic snapshot at
+the exact time the observed method returns, rather than holding onto a Unity
+`GameObject` reference that may disappear on a later frame.
+
+`src/BelowZeroCoop.Plugin/ConstructionGameSnapshotProbe.cs` independently
+inspects public game API facts:
+
+- `UniqueIdentifier.Id` obtained through `GameObject.GetComponent(Type)`
+  is a **game-owned string**. This is not automatically a `.NET Guid` and
+  we do **not** generate a new random GUID when the original is missing.
+- `Constructable.techType` supplies a candidate object type.
+- `Constructable.constructedAmount` is only evidence of progress.
+  Values below 0.999 are `partial_progress`; higher values are merely
+  `complete_candidate`, not proof of durable world commitment.
+- `transform.position`, `transform.rotation`, `localPosition` and
+  `localRotation` are copied as finite numeric values and validated
+  against bounded ranges. These are observed transforms, **not verified
+  base-grid coordinates**.
+- `BaseGhost.Finish`: the ghost's own ID is intentionally never used
+  as a permanent piece ID. We instead look for an enclosing
+  `ConstructableBase` component and use its `UniqueIdentifier.Id`
+  as a **candidate**. The owner base's ID, when present through
+  `TargetBase`, is a **separate** field.
+- All observations retain `origin=unknown`, because the same game
+  callbacks can run during save loading, scripted building, or eventual
+  replication. Neither loading events nor local player actions have been
+  reliably distinguished yet.
+
+The source of an ID is logged as `direct_component_uid`,
+`constructable_base_parent_uid` or `unavailable`.
+Empty, oversized or invalid control-character IDs and invalid/nonfinite
+transforms are withheld. A missing identifier is never replaced with an
+ephemeral process hash: `volatileInstance` is **diagnostic only**.
+
+No captured observation is yet sent to the multiplayer server, inserted
+into `WorldState`, or written into a native or custom save. Before
+enabling any world writes, we must correlate the genuine game runtime
+with the stable instance ID and distinguish actual player construction
+from ghost placement, cell load and replayed remote objects.
+
+CI currently proves these behaviors using fake Unity/game metadata,
+including missing identities, partial progress, bad coordinates,
+temporary ghost IDs, parent base IDs and valid candidate piece IDs.
+It **cannot** prove that all real game builds expose exactly these
+members. The scanner and observers simply skip unavailable data.
