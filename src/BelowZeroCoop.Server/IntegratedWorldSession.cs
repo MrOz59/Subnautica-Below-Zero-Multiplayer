@@ -4,8 +4,11 @@ namespace BelowZeroCoop.Server;
 
 internal sealed class IntegratedWorldSession : IDisposable
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
     private const int MaxBytes = 12 * 1024 * 1024;
+    // Service-only actor for standalone world mirroring. Never accepted from
+    // a public packet or treated as a real authenticated player ID.
+    private const uint HostAuthorityActorId = 1;
     private readonly object gate = new();
     private readonly string file;
     private readonly FileStream exclusiveLock;
@@ -39,7 +42,8 @@ internal sealed class IntegratedWorldSession : IDisposable
                     !root.RootElement.TryGetProperty("Revision", out _) ||
                     !root.RootElement.TryGetProperty("Construction", out _) ||
                     !root.RootElement.TryGetProperty("Power", out _) ||
-                    !root.RootElement.TryGetProperty("Fabrication", out _))
+                    !root.RootElement.TryGetProperty("Fabrication", out _) ||
+                    !root.RootElement.TryGetProperty("World", out _))
                     throw new InvalidDataException("Incomplete integrated snapshot");
                 input.Position = 0;
                 document = JsonSerializer.Deserialize<IntegratedWorldDocument>(input)
@@ -51,7 +55,8 @@ internal sealed class IntegratedWorldSession : IDisposable
                 {
                     Construction = new ConstructionState().Snapshot(),
                     Power = new PowerGridState(gridId, powerCapacity).Snapshot(),
-                    Fabrication = new FabricationState(recipes).Snapshot()
+                    Fabrication = new FabricationState(recipes).Snapshot(),
+                    World = new WorldState().Snapshot()
                 };
             }
 
@@ -83,7 +88,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting) =>
+            return Apply((construction, power, crafting, world) =>
             {
                 ConstructionResult result = construction.Place(operationId,
                     expectedRevision, entityId, generation, kind, bounds, trustedPlayers);
@@ -93,6 +98,17 @@ internal sealed class IntegratedWorldSession : IDisposable
                     !crafting.RegisterStation(entityId, generation))
                     return (new ConstructionResult(false, false,
                         "fabricator_registration_failed", result.Revision, 0, 0), false);
+
+                WorldEntity? prior = world.Snapshot().Entities
+                    .SingleOrDefault(e => e.Id == entityId);
+                long expectedEntityRevision = prior?.Revision ?? 0;
+                WorldResult built = world.Apply(new WorldCommand(
+                    Guid.NewGuid(), HostAuthorityActorId, entityId, generation,
+                    expectedEntityRevision, WorldAction.Build, Kind: kind),
+                    DateTime.UtcNow);
+                if (!built.Applied)
+                    return (new ConstructionResult(false, false,
+                        "world_registration_failed", result.Revision, 0, 0), false);
                 return (result, true);
             });
         }
@@ -104,7 +120,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting) =>
+            return Apply((construction, power, crafting, world) =>
             {
                 var result = construction.Connect(operationId, revision,
                     a, generationA, b, generationB, kind);
@@ -119,7 +135,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting) =>
+            return Apply((construction, power, crafting, world) =>
             {
                 ConstructionNode? node = construction.Snapshot().Nodes
                     .SingleOrDefault(n => n.Id == constructionId);
@@ -142,7 +158,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting) =>
+            return Apply((construction, power, crafting, world) =>
             {
                 long before = power.Snapshot().LastTickMs;
                 if (!power.TryAdvance(hostMonotonicMs, out _))
@@ -164,7 +180,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting) =>
+            return Apply((construction, power, crafting, world) =>
             {
                 var plan = construction.PreviewRemove(expectedRevision,
                     entityId, generation, cascade, trustedPlayers);
@@ -198,6 +214,25 @@ internal sealed class IntegratedWorldSession : IDisposable
                         return (IntegratedRemovalResult.Fail("craft_cleanup_failed"), false);
                 }
 
+                // The general world index is part of this exact transaction.
+                // No construction may be tombstoned while its world entry
+                // remains alive, including on a failed persisted write.
+                var worldBefore = world.Snapshot().Entities.ToDictionary(x => x.Id);
+                DateTime nowUtc = DateTime.UtcNow;
+                foreach (Guid removedId in plan.EntityIds)
+                {
+                    if (!worldBefore.TryGetValue(removedId, out WorldEntity? old) ||
+                        !world.TryAcquireLease(removedId, HostAuthorityActorId,
+                            nowUtc, TimeSpan.FromSeconds(30)))
+                        return (IntegratedRemovalResult.Fail("world_lease_failed"), false);
+                    WorldResult destroyed = world.Apply(new WorldCommand(
+                        Guid.NewGuid(), HostAuthorityActorId,
+                        removedId, old.Generation, old.Revision,
+                        WorldAction.Destroy), nowUtc);
+                    if (!destroyed.Applied)
+                        return (IntegratedRemovalResult.Fail("world_cleanup_failed"), false);
+                }
+
                 return (new IntegratedRemovalResult(true, false, "ok",
                     result.Revision, result.RemovedCount), true);
             });
@@ -212,7 +247,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting) =>
+            return Apply((construction, power, crafting, world) =>
             {
                 long revision = crafting.Snapshot().Revision;
                 bool credited = crafting.GrantMaterials(operationId, actorId,
@@ -228,7 +263,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting) =>
+            return Apply((construction, power, crafting, world) =>
             {
                 if (!crafting.Snapshot().Jobs.Any(j => j.Id == jobId) &&
                     !crafting.TryOpen(stationId, generation, verifiedActor,
@@ -248,7 +283,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting) =>
+            return Apply((construction, power, crafting, world) =>
             {
                 FabricationDeliveryResult result = crafting.DeliverToInventory(
                     jobId, verifiedActor, nowUtc);
@@ -262,7 +297,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting) =>
+            return Apply((construction, power, crafting, world) =>
             {
                 long revision = crafting.Snapshot().Revision;
                 bool cancelled = crafting.Cancel(jobId, verifiedActor, nowUtc);
@@ -275,12 +310,13 @@ internal sealed class IntegratedWorldSession : IDisposable
     public IntegratedWorldDocument SnapshotForJoin() => Snapshot();
 
     private T Apply<T>(Func<ConstructionState, PowerGridState, FabricationState,
-        (T Result, bool Changed)> operation)
+        WorldState, (T Result, bool Changed)> operation)
     {
         var construction = ConstructionState.Restore(document.Construction);
         var power = PowerGridState.Restore(document.Power);
         var crafting = FabricationState.Restore(document.Fabrication, recipes);
-        (T result, bool changed) = operation(construction, power, crafting);
+        var world = WorldState.Restore(document.World);
+        (T result, bool changed) = operation(construction, power, crafting, world);
         if (!changed)
             return result;
 
@@ -290,7 +326,8 @@ internal sealed class IntegratedWorldSession : IDisposable
             Revision = checked(document.Revision + 1),
             Construction = construction.Snapshot(),
             Power = power.Snapshot(),
-            Fabrication = crafting.Snapshot()
+            Fabrication = crafting.Snapshot(),
+            World = world.Snapshot()
         };
         Validate(next, recipes);
         Save(next);
@@ -329,14 +366,29 @@ internal sealed class IntegratedWorldSession : IDisposable
     {
         if (snapshot == null || snapshot.Version != SchemaVersion ||
             snapshot.Revision < 0 || snapshot.Construction == null ||
-            snapshot.Power == null || snapshot.Fabrication == null)
+            snapshot.Power == null || snapshot.Fabrication == null ||
+            snapshot.World == null)
             throw new InvalidDataException("Unsupported integrated world schema");
 
         var construction = ConstructionState.Restore(snapshot.Construction);
         PowerGridState.Restore(snapshot.Power);
         FabricationState.Restore(snapshot.Fabrication, recipes);
+        WorldState.Restore(snapshot.World);
         Dictionary<Guid, ConstructionNode> nodes =
             construction.Snapshot().Nodes.ToDictionary(x => x.Id);
+
+        // Validate both directions: no orphan world index entries and no
+        // topology nodes absent from the general registry.
+        if (snapshot.World.Entities.Count != nodes.Count)
+            throw new InvalidDataException("Construction/world entity count mismatch");
+        foreach (WorldEntity worldEntity in snapshot.World.Entities)
+        {
+            if (!nodes.TryGetValue(worldEntity.Id, out ConstructionNode? node) ||
+                worldEntity.Generation != node.Generation ||
+                worldEntity.Deleted != node.Deleted ||
+                worldEntity.Kind != node.Kind)
+                throw new InvalidDataException("Construction and world index diverged");
+        }
 
         foreach (PowerDevice device in snapshot.Power.Devices)
         {
@@ -405,6 +457,7 @@ internal sealed class IntegratedWorldDocument
     public ConstructionDocument Construction { get; set; } = null!;
     public PowerDocument Power { get; set; } = null!;
     public FabricationDocument Fabrication { get; set; } = null!;
+    public WorldDocument World { get; set; } = null!;
 }
 
 internal sealed record IntegratedRemovalResult(
