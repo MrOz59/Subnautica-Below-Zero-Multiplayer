@@ -31,6 +31,10 @@ jobs:
           dotnet-version: '8.0.x'
       - run: dotnet build src/BelowZeroCoop.Server/BelowZeroCoop.Server.csproj --configuration Release
       - run: dotnet run --project src/BelowZeroCoop.SmokeTests/BelowZeroCoop.SmokeTests.csproj --configuration Release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s launcher/tests -p test_server_network.py -v
 
 # The Unity plugin needs BepInEx and game assemblies supplied by the owner;
 # do not download, publish or redistribute the proprietary game binaries in CI.
