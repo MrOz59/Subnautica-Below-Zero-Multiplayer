@@ -55,7 +55,12 @@ first-class runtime, while remaining compatible with Windows.
       destroyed stations, missing snapshots and pending-delivery restart.
 - [ ] Authenticate player crafting requests and validate recipe, ingredient
       availability and atomic inventory consumption before any game integration.
-- [ ] Make the craft inventory handoff recoverably atomic across stored state.
+- [x] Standalone ingredient reservation, single-aggregate output delivery and
+      durable file-backed transaction facade with rollback on write failure.
+- [x] CI verifies material replay, cancellation refunds, concurrent spending,
+      output identity after restart and single-writer save locking.
+- [ ] Unite the internal craft inventory with the actual player inventory and
+      EquipmentState; enforce cross-system transactional reconciliation.
 - [ ] Bind these systems to authenticated game entities and the game save.
 - [ ] Creature synchronization and server ownership.
 - [ ] Seatruck / Prawn / Snowfox state and transitions.

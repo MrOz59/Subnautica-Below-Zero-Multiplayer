@@ -92,3 +92,11 @@ UI leases, running work and output ownership. Historical #3/#76 regression
 tests cover cancel/reopen, repeated claims, disconnects, job completion and
 crash recovery. It is not wired into the live Fabricator, game inventory or
 the unauthenticated development UDP server.
+
+## Additional fabrication safeguards
+
+The follow-up implementation now adds trusted recipe ingredients, replay-safe
+ingredient credits, refunds for unfinished cancelled/destroyed jobs, atomic
+in-aggregate output item IDs and file-backed persistence-before-ack. See
+[FABRICATION.md](FABRICATION.md). These are still independent-domain tests;
+none of them changes the original mod or the installed Below Zero game.

@@ -27,7 +27,9 @@ BOT Benson mod. Original project's restrictive notice is not a license grant.
   persistence and regression tests. Neither is connected to Unity gameplay.
 - Independent Fabricator lifecycle (#3/#76): interaction leases, server-owned
   crafting jobs, durable delivery tickets, idempotent acknowledgements,
-  cancellation, reconnect recovery and strict snapshots. NOT game-connected.
+  cancellation, reconnect recovery and strict snapshots. Now also includes
+  local recipe-ingredient reservations, one-snapshot output inventory and a
+  single-writer persistence wrapper. NOT connected to real game inventory.
   This is **not connected to actual gameplay or the UDP listener**.
 
 NOT implemented: actual player avatars, animation/vehicle/world replication,

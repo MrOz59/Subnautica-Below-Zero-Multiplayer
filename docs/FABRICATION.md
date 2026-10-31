@@ -73,6 +73,47 @@ The future adapter must implement atomic or recoverable multi-store commits;
 otherwise an incorrect save order can still lose or duplicate items. This
 module does not make real game inventory guarantees on its own.
 
+## Local material reservations and atomic output accounting
+
+The prototype now includes `FabricationInventory`, in the **same persisted
+aggregate** as `FabricationState` jobs. This is a separate internal ledger,
+not the real Subnautica inventory and not a modification of EquipmentState.
+
+- Trusted recipes may specify required material types and quantities.
+- `GrantMaterials` is a **trusted server/bootstrap-only** API with durable,
+  non-evicting operation receipts. Replayed grant IDs do not create free stock.
+  This method must never be reachable from the unauthenticated UDP listener.
+- `Begin` checks the owner's resources and reserves the entire recipe in the
+  same critical section that creates the job. A duplicate Begin cannot consume
+  a second set of ingredients. Two concurrent jobs cannot overspend the same
+  inventory balance.
+- `Cancel` before completion and destruction of an unfinished station
+  refund the exact reservations once. A completed craft does not refund its
+  ingredients.
+- `DeliverToInventory` adds the exact immutable output UUID and finalizes
+  the job in one aggregate update. Replays return the same result, never a
+  second item. Capacity errors keep the ticket claimable.
+- The aggregate's snapshot includes inventory, recipe reservations and credit
+  receipts, with strict load-time consistency validation (schema v2).
+- `DurableFabricationSession` wraps mutations in a single-writer file lock
+  and saves before returning success. On save errors it rolls back its
+  in-memory changes and drops transient UI leases, so the player can reopen.
+  It is a **single-process local developer component**, not a network service.
+
+The old `Claim` / `ConfirmDelivery` methods still exist for external
+outbox experiments; they do **not** automatically credit the internal item
+ledger. For the self-contained atomic path, use `DeliverToInventory` through
+`DurableFabricationSession`. The two paths must never both be used to deliver
+the same live game item.
+
+The current item ledger and the existing `EquipmentState` quickslots are
+**not unified**. Before real gameplay, item creation must be connected to a
+single authoritative inventory, with trusted player identity, ingredients
+mapped to actual game item instances, capacity checks and recoverable
+cross-system transactions. Save snapshots still require the usual filesystem
+durability caveat: the implementation flushes file content, but does not
+provide a replicated database or a complete append-only write-ahead log.
+
 ## Persistence and crash recovery
 
 `GameplayStore.SaveFabrication` and `LoadFabrication` use a strict versioned
@@ -97,7 +138,10 @@ dotnet run --project src/BelowZeroCoop.FabricationTests -c Release
 Covers concurrent UI openings, repeated Begin/Cancel/Claim, interrupted
 delivery and restart, reassigned station generations, disconnected owners,
 lease expiry, source ownership checks, re-opening after collection, and
-rejection of broken snapshots.
+rejection of broken snapshots. The additional material/economy tests cover
+missing ingredients, actor separation, credit replay, cancellation refunds,
+station destruction refunds, concurrent double-spend prevention, item UUID
+idempotency after multiple restarts and failure-to-save rollback.
 
 ## Remaining before playable co-op
 
@@ -105,7 +149,7 @@ rejection of broken snapshots.
   UI callbacks to verified Below Zero game code in a separate integration.
 - Reserve/consume ingredients atomically; refund policy for cancelled work.
 - Host-only gameplay authorization (network IDs are not authenticated).
-- Durable idempotent transfer between FabricationState and EquipmentState.
+- Unified durable item ledger shared with EquipmentState (separate for now).
 - Handle station destruction, game scene unload and save migration.
 - Capacity management of old claimed/cancelled jobs without forgetting
   idempotency keys; until then MaxJobs caps outstanding/history records.
