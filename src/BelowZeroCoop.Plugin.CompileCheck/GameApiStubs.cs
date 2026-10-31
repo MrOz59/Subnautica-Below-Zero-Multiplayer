@@ -128,3 +128,32 @@ public sealed class GameHookProbeFixture
     public void Overloaded(int value) { }
     public void Overloaded(string value) { }
 }
+
+// Fake Build Zero game targets for compile-check only. They are not
+// actual Below Zero game classes or method bodies.
+public sealed class Constructable
+{
+    public static int Executions { get; private set; }
+    public bool Construct()
+    {
+        Executions++;
+        HarmonyLib.HarmonyFakeDispatch.After(
+            System.Reflection.MethodBase.GetCurrentMethod(), this);
+        return true;
+    }
+}
+public sealed class BaseGhost
+{
+    public static int Executions { get; private set; }
+    public void Finish()
+    {
+        Executions++;
+        HarmonyLib.HarmonyFakeDispatch.After(
+            System.Reflection.MethodBase.GetCurrentMethod(), this);
+    }
+}
+public sealed class AmbiguousConstructable
+{
+    public void Construct() { }
+    public void Construct(int value) { }
+}

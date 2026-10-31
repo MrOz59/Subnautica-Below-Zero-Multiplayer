@@ -22,6 +22,9 @@ namespace BelowZeroCoop.Plugin
 
         private ConfigEntry<bool> enableProbe;
         private ConfigEntry<bool> scanGameHooksOnStartup;
+        private ConfigEntry<bool> observeBuildingHooks;
+        private BuildingHookObserver buildingObserver;
+        private int lastDroppedBuildingEvents;
         private ConfigEntry<bool> enableMovementPreview;
         private readonly MovementPreview movementPreview = new MovementPreview();
         private bool previewActive;
@@ -53,6 +56,8 @@ namespace BelowZeroCoop.Plugin
                 "Enable a development-only UDP connectivity probe. Not multiplayer.");
             scanGameHooksOnStartup = Config.Bind("Development", "ScanGameHooksOnStartup", false,
                 "Read-only inspection of game method names. Logs status; never patches gameplay.");
+            observeBuildingHooks = Config.Bind("Development", "ObserveBuildingHooks", false,
+                "Install passive Harmony construction callbacks. Local logs only; never changes game/world/network.");
             enableMovementPreview = Config.Bind("Development", "EnableMovementPreview", false,
                 "Enable sending local position and rendering temporary peer capsules. LAN debug only.");
             serverHost = Config.Bind("Network", "Host", "127.0.0.1",
@@ -88,10 +93,70 @@ namespace BelowZeroCoop.Plugin
                     " found, " + ambiguous + " ambiguous, " + missing +
                     " unavailable. No game methods were patched.");
             }
+
+            if (observeBuildingHooks.Value)
+            {
+                // Do not install anything unless the real game assembly is
+                // present. The catalog may still show missing/ambiguous hooks.
+                var gameAssembly = Array.Find(
+                    AppDomain.CurrentDomain.GetAssemblies(),
+                    assembly => assembly.GetName().Name == "Assembly-CSharp");
+                if (gameAssembly == null)
+                {
+                    Logger.LogWarning("[BuildObserve] Assembly-CSharp unavailable; no patches installed.");
+                }
+                else
+                {
+                    try
+                    {
+                        buildingObserver = new BuildingHookObserver();
+                        int installed = buildingObserver.Install(gameAssembly,
+                            BuildingHookObserver.DefaultTargets(),
+                            line => Logger.LogInfo("[BuildObserve] " + line));
+                        if (installed == 0)
+                        {
+                            buildingObserver.Dispose();
+                            buildingObserver = null;
+                        }
+                        Logger.LogInfo("[BuildObserve] " + installed +
+                            " passive construction callbacks active. No gameplay replication.");
+                    }
+                    catch (Exception ex)
+                    {
+                        if (buildingObserver != null)
+                        {
+                            buildingObserver.Dispose();
+                            buildingObserver = null;
+                        }
+                        Logger.LogWarning("[BuildObserve] Disabled after installation failure: " +
+                            ex.GetType().Name);
+                    }
+                }
+            }
         }
 
         private void Update()
         {
+            // Handle diagnostic events on Unity's main thread and keep a
+            // strict per-frame budget, completely separate from the UDP probe.
+            if (buildingObserver != null)
+            {
+                foreach (var observed in buildingObserver.Drain(8))
+                {
+                    Logger.LogInfo("[BuildObserve] " + observed.EventName +
+                        " type=" + observed.RuntimeType +
+                        " volatileInstance=" + observed.VolatileInstanceToken +
+                        " utc=" + observed.ObservedUtc.ToString("o"));
+                }
+                int dropped = buildingObserver.DroppedCount;
+                if (dropped != lastDroppedBuildingEvents)
+                {
+                    Logger.LogWarning("[BuildObserve] Bounded queue overflow: " +
+                        dropped + " total old observations dropped.");
+                    lastDroppedBuildingEvents = dropped;
+                }
+            }
+
             if (!enableProbe.Value)
             {
                 if (socket != null)
@@ -351,6 +416,11 @@ namespace BelowZeroCoop.Plugin
 
         private void OnDestroy()
         {
+            if (buildingObserver != null)
+            {
+                buildingObserver.Dispose();
+                buildingObserver = null;
+            }
             CloseSocket();
         }
 

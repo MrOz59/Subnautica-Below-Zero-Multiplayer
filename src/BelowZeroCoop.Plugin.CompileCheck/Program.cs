@@ -88,4 +88,63 @@ Require(GameHookCatalog.Targets.Count >= 30,
 Require(GameHookProbeFixture.InvokedCount == 0,
         "reflection-only diagnostics must not invoke game methods");
 
+// Passive Harmony observers: fake dispatch models callback bookkeeping only,
+// not Unity/Harmony injection or the real game method signatures.
+Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
+        "disabled singleplayer plugin must not install Harmony observers");
+var gameAssembly = typeof(Constructable).Assembly;
+using (var observer = new BuildingHookObserver())
+{
+    int installed = observer.Install(gameAssembly,
+        BuildingHookObserver.DefaultTargets(), null);
+    Require(installed == 2 && HarmonyLib.HarmonyFakeDispatch.PatchCount == 2,
+        "two independent postfixes installed only when explicitly requested");
+
+    int before = Constructable.Executions;
+    Require(new Constructable().Construct() && Constructable.Executions == before + 1,
+        "observing does not suppress original game construction");
+    before = BaseGhost.Executions;
+    new BaseGhost().Finish();
+    Require(BaseGhost.Executions == before + 1,
+        "observing base finish leaves original method active");
+
+    var observations = observer.Drain(16);
+    Require(observations.Count == 2 &&
+            observations[0].EventName == "construct_method_returned" &&
+            observations[1].EventName == "base_ghost_finish_returned",
+            "both observations captured without invoking world or network writes");
+    Require(observer.Drain(16).Count == 0, "drained records cannot replay");
+
+    for (int i = 0; i < BuildingHookObserver.MaxPending + 10; ++i)
+        new Constructable().Construct();
+    Require(observer.DroppedCount == 10,
+        "bounded observer drops oldest records rather than allocating forever");
+    Require(observer.Drain(512).Count == 32,
+        "drain is limited to a strict main-thread frame budget");
+}
+Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
+        "plugin shutdown unregisters only its Harmony callbacks");
+new Constructable().Construct();
+Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
+        "vanilla construction remains callable after observer cleanup");
+
+using (var ambiguous = new BuildingHookObserver())
+{
+    int installed = ambiguous.Install(gameAssembly, new[]
+    {
+        new BuildingHookObserver.Candidate("AmbiguousConstructable",
+            "Construct", "unsupported", typeof(BuildingHookObserver).GetMethod(
+                "AfterConstruct",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Static)),
+        new BuildingHookObserver.Candidate("MissingConstructionClass",
+            "Finish", "unavailable", typeof(BuildingHookObserver).GetMethod(
+                "AfterBaseFinish",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Static))
+    }, null);
+    Require(installed == 0 && HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
+        "missing/ambiguous hooks skipped instead of guessing overloads");
+}
+
 Console.WriteLine("Plugin syntax, disabled-singleplayer and fake-Unity lifecycle tests passed.");

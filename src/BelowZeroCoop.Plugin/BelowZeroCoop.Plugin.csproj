@@ -10,6 +10,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" PrivateAssets="all" />
     <ProjectReference Include="../BelowZeroCoop.Protocol/BelowZeroCoop.Protocol.csproj" />
+    <Reference Include="0Harmony">
+      <HintPath>$(BepInExCore)/0Harmony.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="BepInEx">
       <HintPath>$(BepInExCore)/BepInEx.dll</HintPath>
       <Private>False</Private>
