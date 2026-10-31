@@ -91,10 +91,10 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
     var machine = new FabricationState(recipes);
     Guid station = Guid.NewGuid();
     machine.RegisterStation(station, 1);
-    Check(machine.TryOpen(station, 7, start, lease), "actor opens");
+    Check(machine.TryOpen(station, 1, 7, start, lease), "actor opens");
     Check(machine.ReleaseActor(7) == 1, "disconnect releases UI lease");
     Check(machine.ReleaseActor(7) == 0, "repeat disconnect harmless");
-    Check(machine.TryOpen(station, 8, start, lease),
+    Check(machine.TryOpen(station, 1, 8, start, lease),
           "new player can enter after owner disconnect");
 
     Guid task = Guid.NewGuid();
@@ -118,13 +118,13 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
     var machine = new FabricationState(recipes);
     Guid station = Guid.NewGuid();
     machine.RegisterStation(station, 1);
-    Check(machine.TryOpen(station, 1, start, TimeSpan.FromSeconds(2)),
+    Check(machine.TryOpen(station, 1, 1, start, TimeSpan.FromSeconds(2)),
           "lease acquired");
-    Check(machine.TryOpen(station, 2, start.AddSeconds(3), lease),
+    Check(machine.TryOpen(station, 1, 2, start.AddSeconds(3), lease),
           "new owner can open after timeout");
     Check(!machine.TryClose(station, 1), "old actor cannot close new owner's UI");
     Check(machine.TryClose(station, 2), "active actor can close UI");
-    Check(machine.TryOpen(station, 1, start.AddSeconds(3), lease),
+    Check(machine.TryOpen(station, 1, 1, start.AddSeconds(3), lease),
           "closing UI releases station");
 }
 
@@ -134,7 +134,7 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
     var machine = new FabricationState(recipes);
     Guid station = Guid.NewGuid();
     machine.RegisterStation(station, 1);
-    machine.TryOpen(station, 1, start, lease);
+    machine.TryOpen(station, 1, 1, start, lease);
     Guid jobId = Guid.NewGuid();
     Check(machine.Begin(jobId, station, 1, 1, recipe.Id, start).Started,
           "old-generation craft started");
@@ -165,7 +165,7 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
     Guid station = Guid.NewGuid();
     Guid jobId = Guid.NewGuid();
     machine.RegisterStation(station, 1);
-    machine.TryOpen(station, 123, start, lease);
+    machine.TryOpen(station, 1, 123, start, lease);
     var started = machine.Begin(jobId, station, 1, 123, recipe.Id, start);
     string dir = Path.Combine(Path.GetTempPath(),
         "bzc-crafting-" + Guid.NewGuid().ToString("N"));
