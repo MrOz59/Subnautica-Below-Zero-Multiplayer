@@ -323,19 +323,37 @@
          */
         public static void SendPacketToOtherClients(AuthorizationProfile profile, NetworkPacket packet, bool checkConnected = false)
         {
-            if (Server.Instance.IsLogablePacket(packet.Type))
+            byte[] serialized = null;
+            bool sent = false;
+
+            foreach (var recipient in Server.Instance.Players.Values)
             {
-                Log.Info($"PACKET SENDED: [Length: {NetworkTools.Serialize(packet).Length}] -> {packet.Type}");
-            }
-            
-            foreach (var player in Server.Instance.Players.Values.Where(q => q.IpPortAddress != profile.IpPortAddress))
-            {
-                if (checkConnected && !player.IsFullConnected)
+                if (recipient.IpPortAddress == profile.IpPortAddress ||
+                    (checkConnected && !recipient.IsFullConnected) ||
+                    recipient.NetPeer == null ||
+                    recipient.NetPeer.ConnectionState != ConnectionState.Connected)
                 {
                     continue;
                 }
 
-                SendPacket(player.IpPortAddress, packet);
+                if (serialized == null)
+                {
+                    serialized = packet.Serialize();
+                }
+
+                recipient.NetPeer.Send(serialized, packet.ChannelId, packet.DeliveryMethod);
+                sent = true;
+            }
+
+            if (sent)
+            {
+                if (Server.Instance.IsLogablePacket(packet.Type))
+                {
+                    Log.Info($"PACKET SENDED: [Length: {serialized.Length}] -> {packet.Type}");
+                }
+
+                // One wakeup per broadcast, not one per recipient.
+                Server.Instance.NetworkServer.TriggerUpdate();
             }
         }
 
@@ -348,19 +366,35 @@
          */
         public static void SendPacketToAllClient(NetworkPacket packet, bool checkConnected = false)
         {
-            if (Server.Instance.IsLogablePacket(packet.Type))
+            byte[] serialized = null;
+            bool sent = false;
+
+            foreach (var recipient in Server.Instance.Players.Values)
             {
-                Log.Info($"PACKET SENDED: [Length: {NetworkTools.Serialize(packet).Length}] -> {packet.Type}");
-            }
-            
-            foreach (var player in Server.Instance.Players)
-            {
-                if (checkConnected && !player.Value.IsFullConnected)
+                if ((checkConnected && !recipient.IsFullConnected) ||
+                    recipient.NetPeer == null ||
+                    recipient.NetPeer.ConnectionState != ConnectionState.Connected)
                 {
                     continue;
                 }
 
-                SendPacket(player.Value.IpPortAddress, packet);
+                if (serialized == null)
+                {
+                    serialized = packet.Serialize();
+                }
+
+                recipient.NetPeer.Send(serialized, packet.ChannelId, packet.DeliveryMethod);
+                sent = true;
+            }
+
+            if (sent)
+            {
+                if (Server.Instance.IsLogablePacket(packet.Type))
+                {
+                    Log.Info($"PACKET SENDED: [Length: {serialized.Length}] -> {packet.Type}");
+                }
+
+                Server.Instance.NetworkServer.TriggerUpdate();
             }
         }
 
