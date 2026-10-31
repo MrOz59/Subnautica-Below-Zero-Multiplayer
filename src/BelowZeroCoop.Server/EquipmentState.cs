@@ -181,14 +181,15 @@ internal sealed class EquipmentState
         var migrated = new EquipmentDocument { Version = SchemaVersion };
         foreach (LegacyEquipmentProfile player in legacy.Players)
         {
-            if (player == null || player.Quickslots == null ||
+            if (player == null || player.Revision < 0 ||
+                player.Quickslots == null ||
                 player.Quickslots.Length != QuickslotCount || player.OwnedItems == null)
                 throw new InvalidDataException("Invalid legacy quickslot array.");
 
             migrated.Players.Add(new EquipmentProfile
             {
                 PlayerId = player.PlayerId,
-                Revision = Math.Max(0, player.Revision),
+                Revision = player.Revision,
                 OwnedItems = player.OwnedItems.ToList(),
                 Slots = player.Quickslots.ToArray()
             });

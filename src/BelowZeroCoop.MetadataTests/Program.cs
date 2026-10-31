@@ -88,6 +88,34 @@ static PowerCommand Device(long revision, PowerAction action,
     try { EquipmentState.Restore(corrupted); }
     catch (InvalidDataException) { rejected = true; }
     Check(rejected, "dangling metadata item reference hard fails");
+
+    string dir = Path.Combine(Path.GetTempPath(), "belowzerocoop-slots-" +
+                              Guid.NewGuid().ToString("N"));
+    string path = Path.Combine(dir, "equipment.json");
+    try
+    {
+        GameplayStore.SaveEquipment(path, equipment);
+        var recovered = GameplayStore.LoadEquipment(path);
+        Check(recovered.SnapshotPlayer(actor)!.Revision == 4,
+              "quickslot schema survives disk save and restart");
+        Check(recovered.Apply(add, actor).Duplicate,
+              "receipt preserved across equipment persistence");
+        GameplayStore.SaveEquipment(path, recovered);
+        Check(File.Exists(path + ".bak"),
+              "previous equipment metadata file retained as backup");
+        File.WriteAllText(path, "{}");
+        bool corrupt = false;
+        try { GameplayStore.LoadEquipment(path); }
+        catch (InvalidDataException) { corrupt = true; }
+        Check(corrupt, "incomplete equipment snapshot cannot erase slots");
+        Check(GameplayStore.LoadEquipment(path + ".bak").SnapshotPlayer(actor) != null,
+              "explicit equipment backup remains loadable");
+    }
+    finally
+    {
+        if (Directory.Exists(dir))
+            Directory.Delete(dir, true);
+    }
 }
 
 // #78: explicitly documented migration for OUR prior quickslot schema,
@@ -190,6 +218,36 @@ static PowerCommand Device(long revision, PowerAction action,
     try { PowerGridState.Restore(corrupt); }
     catch (InvalidDataException) { rejected = true; }
     Check(rejected, "invalid power devices cannot be restored");
+
+    string dir = Path.Combine(Path.GetTempPath(), "belowzerocoop-power-" +
+                              Guid.NewGuid().ToString("N"));
+    string path = Path.Combine(dir, "power.json");
+    try
+    {
+        GameplayStore.SavePower(path, restored);
+        var recovered = GameplayStore.LoadPower(path);
+        Check(recovered.Snapshot().EnergyMilliUnits == 8000,
+              "stored energy survives disk persistence");
+        Check(recovered.Apply(stopSolar).Duplicate,
+              "old power removal stays idempotent after restart");
+        Check(recovered.Snapshot().Devices.Single(x => x.Id == solar).Generation == 2,
+              "generator generation persists across disk restart");
+        GameplayStore.SavePower(path, recovered);
+        Check(File.Exists(path + ".bak"),
+              "previous complete power metadata saved as a backup");
+        File.WriteAllText(path, "{ bad json");
+        bool corrupt = false;
+        try { GameplayStore.LoadPower(path); }
+        catch (InvalidDataException) { corrupt = true; }
+        Check(corrupt, "invalid power JSON cannot silently reset grid");
+        Check(GameplayStore.LoadPower(path + ".bak").Snapshot().EnergyMilliUnits == 8000,
+              "explicit power backup remains recoverable");
+    }
+    finally
+    {
+        if (Directory.Exists(dir))
+            Directory.Delete(dir, true);
+    }
 }
 
 // #81: overflow, time jump, demand shortage, and fractional accumulation.
