@@ -36,6 +36,7 @@ namespace BelowZeroCoop.Plugin
             // System.Guid. Never turn a missing ID into a random durable ID.
             internal readonly string ObservedObjectId;
             internal readonly string TargetBaseId;
+            internal readonly string ObjectIdSource;
             internal readonly string TechType;
             internal readonly double? ConstructedAmount;
             internal readonly TransformData WorldTransform;
@@ -44,11 +45,12 @@ namespace BelowZeroCoop.Plugin
             internal readonly string Origin;
 
             internal Snapshot(string objectId, string targetBaseId,
-                string techType, double? amount, TransformData world,
-                TransformData local, string completion)
+                string idSource, string techType, double? amount,
+                TransformData world, TransformData local, string completion)
             {
                 ObservedObjectId = objectId;
                 TargetBaseId = targetBaseId;
+                ObjectIdSource = idSource;
                 TechType = techType;
                 ConstructedAmount = amount;
                 WorldTransform = world;
@@ -63,15 +65,37 @@ namespace BelowZeroCoop.Plugin
         internal static Snapshot Capture(string eventName, object gameComponent)
         {
             if (gameComponent == null)
-                return new Snapshot(null, null, null, null, null, null, "unknown");
+                return new Snapshot(null, null, "unavailable",
+                    null, null, null, null, "unknown");
 
             try
             {
                 object gameObject = Read(gameComponent, "gameObject");
                 object owner = gameObject ?? gameComponent;
                 object transform = Read(owner, "transform");
-                string uniqueId = GetUniqueId(gameObject, gameComponent.GetType().Assembly);
+                Assembly gameAssembly = gameComponent.GetType().Assembly;
+                string uniqueId = GetUniqueId(gameObject, gameAssembly);
+                string source = uniqueId == null ? "unavailable" : "direct_component_uid";
                 string baseId = null;
+
+                // BaseGhost is often a temporary helper, not the placed
+                // permanent base piece. Only an enclosing ConstructableBase
+                // is eligible as a candidate piece identity. Its transform
+                // is still provisional until verified with game assemblies.
+                if (eventName == "base_ghost_finish_returned")
+                {
+                    object piece = ReadParentComponent(gameComponent,
+                        gameAssembly, "ConstructableBase");
+                    uniqueId = GetUniqueId(Read(piece, "gameObject"), gameAssembly);
+                    source = uniqueId == null
+                        ? "unavailable" : "constructable_base_parent_uid";
+                    if (piece != null)
+                    {
+                        object pieceTransform = Read(piece, "transform");
+                        if (pieceTransform != null)
+                            transform = pieceTransform;
+                    }
+                }
 
                 // TargetBase identifies the parent base only. It is NEVER
                 // used as the ID of a newly constructed piece.
@@ -91,7 +115,7 @@ namespace BelowZeroCoop.Plugin
                 else if (eventName == "base_ghost_finish_returned")
                     stage = "finish_returned_candidate";
 
-                return new Snapshot(uniqueId, baseId, tech, amount,
+                return new Snapshot(uniqueId, baseId, source, tech, amount,
                     ReadTransform(transform, false), ReadTransform(transform, true),
                     stage);
             }
@@ -100,7 +124,31 @@ namespace BelowZeroCoop.Plugin
                 // Unity can destroy a component while it is being inspected,
                 // and some builds have different assembly APIs. Never throw
                 // from a Harmony postfix.
-                return new Snapshot(null, null, null, null, null, null, "unknown");
+                return new Snapshot(null, null, "unavailable",
+                    null, null, null, null, "unknown");
+            }
+        }
+
+        private static object ReadParentComponent(object instance,
+            Assembly assembly, string componentName)
+        {
+            if (instance == null || assembly == null)
+                return null;
+            Type parentType = assembly.GetType(componentName, false);
+            if (parentType == null)
+                return null;
+            try
+            {
+                MethodInfo method = instance.GetType().GetMethod(
+                    "GetComponentInParent",
+                    BindingFlags.Public | BindingFlags.Instance, null,
+                    new[] { typeof(Type) }, null);
+                return method == null ? null :
+                    method.Invoke(instance, new object[] { parentType });
+            }
+            catch
+            {
+                return null;
             }
         }
 
