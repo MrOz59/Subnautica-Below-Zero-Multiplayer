@@ -44,4 +44,41 @@ foreach (byte invalid in new byte[] { 0, 5, 254, 255 })
 }
 Check(!PacketCodec.TryDecode(new byte[PacketCodec.PacketLength + 1], out _),
       "oversized packet rejected");
-Console.WriteLine("Protocol smoke tests passed.");
+// Simulate two clients with unrelated monotonic clocks and approximately
+// 300 ms RTT (150 ms one-way propagation in this test stream).
+var smoother = new MovementInterpolator();
+Check(!smoother.TrySample(0, out _), "no sample before first snapshot");
+Check(smoother.Add(new MovementSnapshot(1, 10.0, 0, 0, 0), 10.15),
+      "first position accepted");
+Check(smoother.Add(new MovementSnapshot(2, 10.05, 0.5f, 0, 0), 10.20),
+      "second position accepted");
+Check(!smoother.Add(new MovementSnapshot(1, 10.02, 300, 0, 0), 10.24),
+      "out-of-order frame rejected");
+Check(smoother.TrySample(10.40, out MovementSample position), "position sampled");
+Check(position.X >= 0.5f && position.X <= 1.51f,
+      "bounded interpolation/extrapolation");
+Check(smoother.DelaySeconds >= 0.10 && smoother.DelaySeconds <= 0.35,
+      "adaptive delay within bounds");
+
+Check(!smoother.Add(new MovementSnapshot(3, double.NaN, 1, 0, 0), 10.30),
+      "invalid sender timestamp rejected");
+Check(!smoother.Add(new MovementSnapshot(3, 10.10, float.PositiveInfinity, 0, 0), 10.30),
+      "invalid spatial coordinates rejected");
+Check(smoother.Add(new MovementSnapshot(3, 10.10, 1000, 0, 0), 10.30),
+      "teleport resets interpolation");
+Check(smoother.TrySample(10.31, out position) && position.X == 1000,
+      "teleport does not smear across the world");
+Check(smoother.Count == 1, "teleport clears old position history");
+
+var wrapping = new MovementInterpolator();
+Check(wrapping.Add(new MovementSnapshot(uint.MaxValue, 1, 0, 0, 0), 1.15),
+      "sequence near wrap accepted");
+Check(wrapping.Add(new MovementSnapshot(1, 1.05, 1, 0, 0), 1.20),
+      "uint sequence wrap accepted");
+for (uint i = 2; i < 200; i++)
+{
+    wrapping.Add(new MovementSnapshot(i, 1.05 + i * 0.05,
+                                      i * 0.1f, 0, 0), 1.20 + i * 0.05);
+}
+Check(wrapping.Count <= 32, "snapshot memory bounded");
+Console.WriteLine("Protocol and interpolation smoke tests passed.");
