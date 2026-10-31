@@ -3,6 +3,7 @@
     using System;
     using System.Collections;
     using System.Collections.Generic;
+    using System.Collections.Concurrent;
     using System.Net.NetworkInformation;
     using System.Text;
     using System.Threading;
@@ -82,7 +83,7 @@
          * @author Ismail <ismaiil_0234@hotmail.com>
          *
          */
-        public static Queue<ConnectionSignal> ConnectionSignalDataQueues { get; set; } = new Queue<ConnectionSignal>();
+        public static ConcurrentQueue<ConnectionSignal> ConnectionSignalDataQueues { get; private set; } = new ConcurrentQueue<ConnectionSignal>();
 
         /**
          *
@@ -330,7 +331,10 @@
          */
         public static void ClearSignals()
         {
-            ConnectionSignalDataQueues.Clear();
+            ConnectionSignal ignored;
+            while (ConnectionSignalDataQueues.TryDequeue(out ignored))
+            {
+            }
         }
     }
 }

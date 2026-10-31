@@ -22,6 +22,12 @@ namespace Subnautica.API.Features
         private uint lastSequence;
         private bool hasSequence;
 
+        /// <summary>
+        /// Last genuine sender timestamp, used to reject late cross-mode packets.
+        /// Zero means that the sender has not supplied time metadata.
+        /// </summary>
+        public float LatestTimestamp { get; private set; }
+
         private struct Snapshot
         {
             public float Time;
@@ -46,6 +52,7 @@ namespace Subnautica.API.Features
             lastSentTime = 0f;
             lastSequence = 0;
             hasSequence = false;
+            LatestTimestamp = 0f;
         }
 
         public bool AddSnapshot(uint sequence, float sentTime, Vector3 position, Quaternion rotation)
@@ -100,6 +107,11 @@ namespace Subnautica.API.Features
 
             lastArrival = arrival;
             lastSentTime = sentTime;
+            if (validSenderTime)
+            {
+                LatestTimestamp = sentTime;
+            }
+
             if (sequence != 0)
             {
                 lastSequence = sequence;

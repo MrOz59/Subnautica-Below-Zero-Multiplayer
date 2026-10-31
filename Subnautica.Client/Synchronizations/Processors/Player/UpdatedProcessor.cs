@@ -54,6 +54,19 @@ namespace Subnautica.Client.Synchronizations.Processors.Player
 
             if (player.IsCreatedModel)
             {
+                // Player and vehicle updates are separate UDP streams. A late on-foot
+                // update must not undo a more recent vehicle transition.
+                if (packet.SnapshotTime > 0f && player.VehicleMovementBuffer.LatestTimestamp > packet.SnapshotTime)
+                {
+                    return true;
+                }
+
+                if (player.VehicleId != 0)
+                {
+                    player.PlayerMovementBuffer.Reset();
+                    player.VehicleMovementBuffer.Reset();
+                }
+
                 var nextPosition = packet.CompressedPosition.ToVector3();
                 var nextRotation = packet.CompressedRotation.ToQuaternion();
                 if (!player.PlayerMovementBuffer.AddSnapshot(packet.SnapshotSequence, packet.SnapshotTime, nextPosition, nextRotation))

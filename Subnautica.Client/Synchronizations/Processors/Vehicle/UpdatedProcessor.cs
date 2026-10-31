@@ -76,6 +76,12 @@
                 return false;
             }
 
+            // Ignore vehicle updates that precede the last received on-foot state.
+            if (packet.SnapshotTime > 0f && player.PlayerMovementBuffer.LatestTimestamp > packet.SnapshotTime)
+            {
+                return true;
+            }
+
             if (player.VehicleId != packet.EntityId)
             {
                 player.VehicleMovementBuffer.Reset();

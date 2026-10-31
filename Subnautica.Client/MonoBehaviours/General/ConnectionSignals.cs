@@ -81,9 +81,9 @@
         {
             try
             {
-                while (NetworkClient.ConnectionSignalDataQueues.Count > 0)
+                ConnectionSignal result;
+                while (NetworkClient.ConnectionSignalDataQueues.TryDequeue(out result))
                 {
-                    var result = NetworkClient.ConnectionSignalDataQueues.Dequeue();
                     if (result == ConnectionSignal.Connected)
                     {
                         ErrorMessages.ShowConnectionSuccess();
