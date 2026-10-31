@@ -100,6 +100,17 @@ DateTime now = new(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
     Check(filled.Applied, "store inventory");
 
     var snapshot = state.Snapshot();
+    Check(state.TryChangesSince(first.Revision, out List<WorldChange> deltas),
+          "changes after a baseline revision can be replayed");
+    Check(deltas.Count == 2 &&
+          deltas[0].Revision == second.Revision &&
+          deltas[1].Revision == filled.Revision,
+          "late join receives contiguous change history");
+    deltas[1].Entity.Items["Battery"] = 999;
+    Check(Get(state, chestId).Items["Battery"] == 3,
+          "delta results cannot mutate authoritative entities");
+    Check(!state.TryChangesSince(999, out _),
+          "future revisions are rejected");
     Check(snapshot.Entities.Count == 2 && snapshot.Revision == 3,
           "snapshot sees both builders' changes");
     snapshot.Entities.Single(x => x.Id == chestId).Items["Battery"] = 200;
@@ -115,6 +126,9 @@ DateTime now = new(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
         var reloaded = WorldStore.Load(path);
         Check(reloaded.Snapshot().Revision == state.Snapshot().Revision,
               "reloaded world retains global revision");
+        Check(reloaded.TryChangesSince(first.Revision, out List<WorldChange> recovered) &&
+              recovered.Count == 2,
+              "change history survives persistence round-trip");
         Check(Get(reloaded, chestId).Items["Battery"] == 3,
               "reloaded world retains construction inventory");
         Check(reloaded.Apply(inventory, now).Duplicate,
@@ -183,6 +197,32 @@ DateTime now = new(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
     Check(results.Count(result => result.Applied && !result.Duplicate) == 1,
           "only one concurrent creation commits");
     Check(world.Snapshot().Revision == 1, "global revision is serializable");
+}
+
+// If the limited delta window is exhausted, fetch a full snapshot instead.
+{
+    var world = new WorldState();
+    Guid id = Guid.NewGuid();
+    WorldResult built = world.Apply(Build(5, id), now);
+    Check(world.TryAcquireLease(id, 5, now, TimeSpan.FromSeconds(30)),
+          "lease entity for change history pressure");
+    long revision = built.Revision;
+    for (int i = 0; i < WorldState.MaxChanges + 10; ++i)
+    {
+        WorldResult result = world.Apply(
+            Change(5, id, 1, revision, "Battery", 1), now);
+        Check(result.Applied, "new change is accepted under load");
+        revision = result.Revision;
+    }
+
+    Check(!world.TryChangesSince(0, out _),
+          "too-old clients must request a fresh snapshot");
+    Check(world.TryChangesSince(revision - 2, out List<WorldChange> recent) &&
+          recent.Count == 2, "recent change history is available");
+    Check(recent[0].Revision == revision - 1 && recent[1].Revision == revision,
+          "recent deltas are contiguous and ordered");
+    Check(world.Snapshot().Changes.Count == WorldState.MaxChanges,
+          "change history stays bounded");
 }
 
 Console.WriteLine("World-state regressions (#77/#82/#85) passed.");

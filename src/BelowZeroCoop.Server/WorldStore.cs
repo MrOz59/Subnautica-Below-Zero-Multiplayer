@@ -76,7 +76,8 @@ internal static class WorldStore
                     !parsed.RootElement.TryGetProperty("Version", out _) ||
                     !parsed.RootElement.TryGetProperty("Revision", out _) ||
                     !parsed.RootElement.TryGetProperty("Entities", out _) ||
-                    !parsed.RootElement.TryGetProperty("Receipts", out _))
+                    !parsed.RootElement.TryGetProperty("Receipts", out _) ||
+                    !parsed.RootElement.TryGetProperty("Changes", out _))
                     throw new InvalidDataException(
                         "Incomplete world snapshot; use the explicit .bak recovery file.");
             }

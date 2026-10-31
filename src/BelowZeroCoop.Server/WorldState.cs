@@ -9,8 +9,9 @@ namespace BelowZeroCoop.Server;
 /// </summary>
 internal sealed class WorldState
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
     private const int MaxEntities = 20000;
+    public const int MaxChanges = 2048;
     private const int MaxReceipts = 4096;
     private const int MaxItemQuantity = 100000;
     private static readonly TimeSpan MaxLeaseDuration = TimeSpan.FromSeconds(60);
@@ -19,6 +20,7 @@ internal sealed class WorldState
     private readonly Dictionary<Guid, WorldEntity> entities = new();
     private readonly Dictionary<Guid, OperationReceipt> receipts = new();
     private readonly Queue<Guid> receiptOrder = new();
+    private readonly Queue<WorldChange> changes = new();
     // Volatile ownership must NEVER be restored from disk.
     private readonly Dictionary<Guid, WorldLease> leases = new();
     private long revision;
@@ -114,6 +116,10 @@ internal sealed class WorldState
                 current.Revision = ++revision;
             }
 
+            changes.Enqueue(new WorldChange(current.Revision, current.Copy()));
+            while (changes.Count > MaxChanges)
+                changes.Dequeue();
+
             var receipt = new OperationReceipt(command.CommandId, signature, current.Revision);
             receipts.Add(command.CommandId, receipt);
             receiptOrder.Enqueue(command.CommandId);
@@ -175,6 +181,31 @@ internal sealed class WorldState
             leases.Remove(id);
     }
 
+    /// <summary>
+    /// Ordered delta feed. False means the requested revision fell out of the
+    /// bounded window and the receiver must request a fresh full snapshot.
+    /// </summary>
+    public bool TryChangesSince(long afterRevision, out List<WorldChange> result)
+    {
+        lock (gate)
+        {
+            result = new List<WorldChange>();
+            if (afterRevision < 0 || afterRevision > revision)
+                return false;
+            if (afterRevision == revision)
+                return true;
+            if (changes.Count == 0 || afterRevision < changes.Peek().Revision - 1)
+                return false;
+
+            foreach (WorldChange entry in changes)
+            {
+                if (entry.Revision > afterRevision)
+                    result.Add(new WorldChange(entry.Revision, entry.Entity.Copy()));
+            }
+            return true;
+        }
+    }
+
     public WorldDocument Snapshot()
     {
         lock (gate)
@@ -184,7 +215,9 @@ internal sealed class WorldState
                 Version = SchemaVersion,
                 Revision = revision,
                 Entities = entities.Values.OrderBy(x => x.Id).Select(x => x.Copy()).ToList(),
-                Receipts = receiptOrder.Select(id => receipts[id]).ToList()
+                Receipts = receiptOrder.Select(id => receipts[id]).ToList(),
+                Changes = changes.Select(entry =>
+                    new WorldChange(entry.Revision, entry.Entity.Copy())).ToList()
             };
         }
     }
@@ -194,7 +227,8 @@ internal sealed class WorldState
         if (document == null || document.Version != SchemaVersion ||
             document.Revision < 0 || document.Entities == null ||
             document.Receipts == null || document.Entities.Count > MaxEntities ||
-            document.Receipts.Count > MaxReceipts)
+            document.Receipts.Count > MaxReceipts ||
+            document.Changes == null || document.Changes.Count > MaxChanges)
             throw new InvalidDataException("Unsupported or invalid world snapshot.");
 
         var restored = new WorldState { revision = document.Revision };
@@ -222,6 +256,32 @@ internal sealed class WorldState
                 throw new InvalidDataException("Snapshot has invalid operation receipt.");
             restored.receiptOrder.Enqueue(receipt.CommandId);
         }
+
+        long priorChange = 0;
+        foreach (WorldChange change in document.Changes)
+        {
+            if (change == null || change.Entity == null ||
+                change.Revision <= 0 || change.Revision > document.Revision ||
+                change.Entity.Revision != change.Revision ||
+                change.Entity.Id == Guid.Empty || change.Entity.Generation < 1 ||
+                !ValidKey(change.Entity.Kind) ||
+                change.Entity.Items == null || change.Entity.Items.Count > 128 ||
+                change.Entity.Items.Any(entry =>
+                    !ValidKey(entry.Key) || entry.Value <= 0 ||
+                    entry.Value > MaxItemQuantity) ||
+                (change.Entity.Deleted && change.Entity.Items.Count != 0) ||
+                (priorChange != 0 && change.Revision != priorChange + 1))
+                throw new InvalidDataException("World snapshot has invalid change history.");
+
+            restored.changes.Enqueue(new WorldChange(
+                change.Revision, change.Entity.Copy()));
+            priorChange = change.Revision;
+        }
+
+        if ((document.Revision > 0 && restored.changes.Count == 0) ||
+            (restored.changes.Count > 0 &&
+             restored.changes.Last().Revision != document.Revision))
+            throw new InvalidDataException("World snapshot has incomplete change history.");
 
         // Critically, actor leases are not serialized or reinstated after crash.
         return restored;
@@ -300,6 +360,9 @@ internal sealed class WorldDocument
     public long Revision { get; set; }
     public List<WorldEntity> Entities { get; set; } = new();
     public List<OperationReceipt> Receipts { get; set; } = new();
+    public List<WorldChange> Changes { get; set; } = new();
 }
 
 internal sealed record OperationReceipt(Guid CommandId, string Signature, long Revision);
+
+internal sealed record WorldChange(long Revision, WorldEntity Entity);
