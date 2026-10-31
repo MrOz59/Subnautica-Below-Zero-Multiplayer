@@ -55,16 +55,16 @@ class ServerNetworkTests(unittest.TestCase):
                     pass
             self.fail("Could not establish development peer session")
 
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender, \\
-             socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
+        with (socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender,
+              socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver):
             connect_peer(sender, 100)
             connect_peer(receiver, 101)
             receiver.settimeout(0.5)
             sender.send(movement(1, 0, 1.0, 10.0))
             received = receiver.recv(100)
             self.assertEqual(len(received), 34)
-            header, version, ptype, seq, peer_id, timestamp, x, y, z = \\
-                struct.unpack("<4sBBIIdfff", received)
+            header, version, ptype, seq, peer_id, timestamp, x, y, z = (
+                struct.unpack("<4sBBIIdfff", received))
             self.assertEqual((header, version, ptype, seq), (b"BZC0", 1, 5, 1))
             self.assertGreater(peer_id, 0)
             self.assertEqual((timestamp, x, y, z), (1.0, 10.0, 0.0, 0.0))
