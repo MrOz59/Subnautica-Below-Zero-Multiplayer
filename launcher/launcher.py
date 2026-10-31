@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -264,15 +265,41 @@ def launch_steam() -> None:
     raise RuntimeError("Steam not found; launch the game from your Steam library.")
 
 
-def start_server() -> None:
+def validate_server_endpoint(bind: str, port: int, allow_lan: bool = False) -> str:
+    """Require explicit consent before exposing the unauthenticated dev server."""
+    try:
+        address = ipaddress.ip_address(bind)
+    except ValueError as ex:
+        raise ValueError("Server bind must be a valid IPv4 or IPv6 address.") from ex
+    if port < 1 or port > 65535:
+        raise ValueError("Server port must be between 1 and 65535.")
+    if not address.is_loopback and not allow_lan:
+        raise ValueError(
+            "The development server has no authentication. Use --allow-lan "
+            "only on a trusted LAN; never forward the port to the internet."
+        )
+    return str(address)
+
+
+def start_server(bind: str = "127.0.0.1", port: int = 27021, allow_lan: bool = False) -> None:
+    bind = validate_server_endpoint(bind, port, allow_lan)
     server = PROJECT_ROOT / "src" / "BelowZeroCoop.Server" / "bin" / "Debug" / "net8.0" / "BelowZeroCoop.Server.dll"
     release = PROJECT_ROOT / "src" / "BelowZeroCoop.Server" / "bin" / "Release" / "net8.0" / "BelowZeroCoop.Server.dll"
     selected = release if release.is_file() else server
     if not selected.is_file():
-        raise FileNotFoundError("Build the server first: dotnet build src/BelowZeroCoop.Server")
+        raise FileNotFoundError("Build the development server: dotnet build src/BelowZeroCoop.Server")
     if not shutil.which("dotnet"):
         raise RuntimeError(".NET 8 runtime is required to start the development server.")
-    subprocess.Popen(["dotnet", str(selected)], cwd=str(PROJECT_ROOT), start_new_session=True)
+
+    log_path = config_file().parent / "server.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as output:
+        process = subprocess.Popen(
+            ["dotnet", str(selected), "--bind", bind, "--port", str(port)],
+            cwd=str(PROJECT_ROOT), stdout=output, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    print("Development server PID " + str(process.pid) + "; log: " + str(log_path))
 
 
 def gui() -> None:
@@ -339,7 +366,10 @@ def gui() -> None:
     actions = ttk.Frame(frame)
     actions.pack(fill="x", pady=(6, 4), before=output)
     ttk.Button(actions, text="Launch via Steam", command=lambda: run_action(launch_steam)).pack(side="left", padx=(0, 6))
-    ttk.Button(actions, text="Start dev server", command=lambda: run_action(start_server)).pack(side="left", padx=(0, 6))
+    ttk.Button(
+        actions, text="Start dev server",
+        command=lambda: run_action(lambda: (start_server(), log("Local development server started; see server.log"))),
+    ).pack(side="left", padx=(0, 6))
     ttk.Button(
         actions,
         text="Copy Proton options",
@@ -366,7 +396,11 @@ def main(argv: list[str] | None = None) -> int:
     ins.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     ins.add_argument("--force", action="store_true", help="Back up and replace existing mod DLLs")
     commands.add_parser("launch", help="Launch the legitimately installed game via Steam")
-    commands.add_parser("start-server", help="Start the local development-only UDP server")
+    srv = commands.add_parser("start-server", help="Start a development-only UDP server")
+    srv.add_argument("--bind", default="127.0.0.1", help="Bind address (loopback by default)")
+    srv.add_argument("--port", type=int, default=27021)
+    srv.add_argument("--allow-lan", action="store_true",
+                     help="Allow an unauthenticated listener on a trusted local network")
     args = parser.parse_args(argv)
 
     try:
@@ -392,7 +426,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "launch":
             launch_steam()
         elif args.command == "start-server":
-            start_server()
+            start_server(args.bind, args.port, args.allow_lan)
         return 0
     except (OSError, RuntimeError, ValueError) as ex:
         print("ERROR: " + str(ex), file=sys.stderr)
