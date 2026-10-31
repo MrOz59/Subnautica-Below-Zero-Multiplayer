@@ -115,6 +115,52 @@ using (var observer = new BuildingHookObserver())
             "both observations captured without invoking world or network writes");
     Require(observer.Drain(16).Count == 0, "drained records cannot replay");
 
+    var building = new Constructable { techType = "BaseWall", constructedAmount = 0.3f };
+    building.gameObject.SetComponent(new UniqueIdentifier { Id = "original-game-id-100" });
+    building.gameObject.transform.position = new UnityEngine.Vector3(12, 3, -8);
+    building.gameObject.transform.localPosition = new UnityEngine.Vector3(1, 2, 3);
+    building.gameObject.transform.rotation = new UnityEngine.Quaternion(0, 0, 0, 1);
+    building.gameObject.transform.localRotation = new UnityEngine.Quaternion(0, 0, 0, 1);
+
+    Require(building.Construct(), "partial construction still runs normally");
+    var partial = observer.Drain(16).Single();
+    Require(partial.Game.ObservedObjectId == "original-game-id-100" &&
+            partial.Game.TechType == "BaseWall" &&
+            partial.Game.WorldTransform != null &&
+            partial.Game.WorldTransform.X == 12 &&
+            partial.Game.LocalTransform.Z == 3 &&
+            partial.Game.CompletionEvidence == "partial_progress" &&
+            partial.Game.Origin == "unknown",
+            "partial progress has identity/transform but is never labeled as player completion");
+
+    building.constructedAmount = 1f;
+    Require(building.Construct(), "complete construction still runs normally");
+    var complete = observer.Drain(16).Single();
+    Require(complete.Game.ObservedObjectId == partial.Game.ObservedObjectId &&
+            complete.Game.CompletionEvidence == "complete_candidate" &&
+            complete.Game.ConstructedAmount == 1d,
+            "same game ID and transformed metadata on candidate completion");
+
+    var parent = new FakeBaseOwner();
+    parent.gameObject.SetComponent(new UniqueIdentifier { Id = "base-owner-500" });
+    var ghost = new BaseGhost { TargetBase = parent };
+    ghost.Finish();
+    var ghostObservation = observer.Drain(16).Single();
+    Require(ghostObservation.Game.TargetBaseId == "base-owner-500" &&
+            ghostObservation.Game.ObservedObjectId == null &&
+            ghostObservation.Game.CompletionEvidence == "finish_returned_candidate",
+            "parent base ID is distinct from nonexistent final-piece ID");
+
+    var invalidIdentity = new Constructable { techType = "BaseWall", constructedAmount = 1f };
+    invalidIdentity.gameObject.SetComponent(new UniqueIdentifier { Id = "bad\\nidentity" });
+    invalidIdentity.gameObject.transform.position =
+        new UnityEngine.Vector3(float.NaN, 0, 0);
+    invalidIdentity.Construct();
+    var unsafeObservation = observer.Drain(16).Single();
+    Require(unsafeObservation.Game.ObservedObjectId == null &&
+            unsafeObservation.Game.WorldTransform == null,
+            "malformed ID or nonfinite game geometry is rejected for persistence");
+
     for (int i = 0; i < BuildingHookObserver.MaxPending + 10; ++i)
         new Constructable().Construct();
     Require(observer.DroppedCount == 10,

@@ -37,9 +37,21 @@ namespace UnityEngine
         }
     }
 
+    public sealed class Quaternion
+    {
+        public float x, y, z, w;
+        public Quaternion(float x, float y, float z, float w)
+        {
+            this.x = x; this.y = y; this.z = z; this.w = w;
+        }
+    }
+
     public sealed class Transform
     {
         public Vector3 position { get; set; } = new Vector3(0, 0, 0);
+        public Vector3 localPosition { get; set; } = new Vector3(0, 0, 0);
+        public Quaternion rotation { get; set; } = new Quaternion(0, 0, 0, 1);
+        public Quaternion localRotation { get; set; } = new Quaternion(0, 0, 0, 1);
         public Vector3 localScale { get; set; } = new Vector3(1, 1, 1);
     }
 
@@ -47,9 +59,23 @@ namespace UnityEngine
 
     public sealed class GameObject : Object
     {
+        private readonly System.Collections.Generic.Dictionary<System.Type, object> components =
+            new System.Collections.Generic.Dictionary<System.Type, object>();
         public static int CreatedCount { get; private set; }
         public string name { get; set; }
         public Transform transform { get; } = new Transform();
+
+        public void SetComponent<T>(T component) where T : class
+        {
+            components[typeof(T)] = component;
+        }
+
+        public object GetComponent(System.Type type)
+        {
+            object component;
+            return type != null && components.TryGetValue(type, out component)
+                ? component : null;
+        }
 
         public static GameObject CreatePrimitive(PrimitiveType type)
         {
@@ -136,8 +162,17 @@ public sealed class GameHookProbeFixture
 
 // Fake Build Zero game targets for compile-check only. They are not
 // actual Below Zero game classes or method bodies.
+public sealed class UniqueIdentifier
+{
+    // Game API fixture name, not a copy of the original implementation.
+    public string Id { get; set; }
+}
+
 public sealed class Constructable
 {
+    public readonly UnityEngine.GameObject gameObject = new UnityEngine.GameObject();
+    public float constructedAmount;
+    public string techType;
     public static int Executions { get; private set; }
     public bool Construct()
     {
@@ -147,8 +182,15 @@ public sealed class Constructable
         return true;
     }
 }
+public sealed class FakeBaseOwner
+{
+    public UnityEngine.GameObject gameObject { get; } = new UnityEngine.GameObject();
+}
+
 public sealed class BaseGhost
 {
+    public UnityEngine.GameObject gameObject { get; } = new UnityEngine.GameObject();
+    public FakeBaseOwner TargetBase { get; set; }
     public static int Executions { get; private set; }
     public void Finish()
     {
