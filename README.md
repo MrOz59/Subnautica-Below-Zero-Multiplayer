@@ -84,4 +84,10 @@ BepInEx and Unity/game files are external dependencies. The original source
 tree at the repository's main branch has different authorship and restrictions:
 those files are not included in this branch.
 
-See docs/ARCHITECTURE.md and docs/ROADMAP.md.
+See docs/ARCHITECTURE.md, docs/ROADMAP.md, and
+[the review of the original project's first 100 issues](docs/UPSTREAM_ISSUES_1-100.md).
+
+The CI includes regression cases inspired by early upstream reports: concurrent
+joins (#63), duplicate debug avatars (#5), preserving singleplayer when networking
+is disabled (#64), and deterministic packet loss, jitter, duplication and
+reordering (#83). These are new tests, not a port of the original mod.

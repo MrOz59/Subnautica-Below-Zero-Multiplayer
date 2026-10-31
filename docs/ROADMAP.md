@@ -20,6 +20,9 @@ first-class runtime, while remaining compatible with Windows.
 - [x] Server-assigned peer identities and late-join movement baseline.
 - [x] Best-effort Goodbye, PeerLeft and idle peer expiration.
 - [x] Repeated Hello retains anti-replay movement sequence state.
+- [x] Historical issue audit (#1-100): docs/UPSTREAM_ISSUES_1-100.md.
+- [x] CI regressions: concurrent joins (#63), duplicate remote capsules (#5),
+      singleplayer disabled-network no-op (#64), packet impairments (#83).
 - [ ] Validate build against the exact installed Below Zero version.
 - [ ] Test on real Linux/Proton and Windows systems.
 
@@ -30,7 +33,9 @@ first-class runtime, while remaining compatible with Windows.
 - [ ] Add interest management, area-based visibility, and spawn/despawn events.
 - [ ] Host-validated player state, disconnect and reconnect.
 - [ ] LAN two-player swim test (both Windows and Proton).
-- [ ] Simulate high-latency 300 ms network conditions.
+- [x] Deterministic 300 ms RTT simulation with 10% loss, jitter,
+      duplicate and reordered movement snapshots.
+- [ ] Real network-emulator tests and a complete 300 ms RTT gameplay test.
 
 ## M2 - World and vehicles
 
