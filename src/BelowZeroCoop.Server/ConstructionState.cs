@@ -8,10 +8,11 @@ namespace BelowZeroCoop.Server;
 /// </summary>
 internal sealed class ConstructionState
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
     public const int MaxNodes = 2048;
     public const int MaxLinks = 8192;
     public const int MaxReceipts = 4096;
+    public const int MaxChanges = 1024;
     public const int MaxCascade = 128;
 
     private readonly object gate = new();
@@ -19,6 +20,7 @@ internal sealed class ConstructionState
     private readonly List<ConstructionLink> links = new();
     private readonly Dictionary<Guid, ConstructionReceipt> receipts = new();
     private readonly Queue<Guid> receiptOrder = new();
+    private readonly Queue<ConstructionChange> changes = new();
     private long revision;
 
     public ConstructionResult Place(Guid commandId, long expectedRevision,
@@ -71,7 +73,9 @@ internal sealed class ConstructionState
                 });
             }
 
-            return Record(commandId, signature, 0, 0);
+            return Record(commandId, signature, 0, 0,
+                new ConstructionChange(revision,
+                    nodes: new List<ConstructionNode> { nodes[entityId].Copy() }));
         }
     }
 
@@ -116,7 +120,9 @@ internal sealed class ConstructionState
 
             links.Add(proposed);
             revision++;
-            return Record(commandId, signature, 0, 0);
+            return Record(commandId, signature, 0, 0,
+                new ConstructionChange(revision,
+                    added: new List<ConstructionLink> { proposed.Copy() }));
         }
     }
 
@@ -141,9 +147,12 @@ internal sealed class ConstructionState
             if (index < 0)
                 return Reject("missing_connection");
 
+            ConstructionLink previous = links[index].Copy();
             links.RemoveAt(index);
             revision++;
-            return Record(commandId, signature, 0, 1);
+            return Record(commandId, signature, 0, 1,
+                new ConstructionChange(revision,
+                    removed: new List<ConstructionLink> { previous }));
         }
     }
 
@@ -186,16 +195,47 @@ internal sealed class ConstructionState
                 return Reject(plan.Reason);
 
             HashSet<Guid> removed = new(plan.EntityIds);
+            List<ConstructionLink> detachedEdges = links.Where(edge =>
+                removed.Contains(edge.A) || removed.Contains(edge.B))
+                .Select(edge => edge.Copy()).ToList();
             int detached = links.RemoveAll(edge =>
                 removed.Contains(edge.A) || removed.Contains(edge.B));
             long newRevision = ++revision;
+            List<ConstructionNode> tombstones = new();
             foreach (Guid childId in plan.EntityIds)
             {
                 ConstructionNode node = nodes[childId];
                 node.Deleted = true;
                 node.Revision = newRevision;
+                tombstones.Add(node.Copy());
             }
-            return Record(commandId, signature, removed.Count, detached);
+            return Record(commandId, signature, removed.Count, detached,
+                new ConstructionChange(revision,
+                    nodes: tombstones, removed: detachedEdges));
+        }
+    }
+
+    /// <summary>
+    /// Atomic topology deltas, including detached power wires and tombstones.
+    /// A client behind the bounded window must fetch a full snapshot instead.
+    /// </summary>
+    public bool TryChangesSince(long afterRevision, out List<ConstructionChange> result)
+    {
+        lock (gate)
+        {
+            result = new List<ConstructionChange>();
+            if (afterRevision < 0 || afterRevision > revision)
+                return false;
+            if (afterRevision == revision)
+                return true;
+            if (changes.Count == 0 || afterRevision < changes.Peek().Revision - 1)
+                return false;
+            foreach (ConstructionChange change in changes)
+            {
+                if (change.Revision > afterRevision)
+                    result.Add(change.Copy());
+            }
+            return true;
         }
     }
 
@@ -209,7 +249,8 @@ internal sealed class ConstructionState
                 Revision = revision,
                 Nodes = nodes.Values.OrderBy(x => x.Id).Select(x => x.Copy()).ToList(),
                 Links = links.Select(x => x.Copy()).ToList(),
-                Receipts = receiptOrder.Select(id => receipts[id]).ToList()
+                Receipts = receiptOrder.Select(id => receipts[id]).ToList(),
+                Changes = changes.Select(x => x.Copy()).ToList()
             };
         }
     }
@@ -219,8 +260,10 @@ internal sealed class ConstructionState
         if (document == null || document.Version != SchemaVersion ||
             document.Revision < 0 || document.Nodes == null ||
             document.Links == null || document.Receipts == null ||
+            document.Changes == null ||
             document.Nodes.Count > MaxNodes || document.Links.Count > MaxLinks ||
-            document.Receipts.Count > MaxReceipts)
+            document.Receipts.Count > MaxReceipts ||
+            document.Changes.Count > MaxChanges)
             throw new InvalidDataException("Invalid construction snapshot schema");
 
         ConstructionState result = new() { revision = document.Revision };
@@ -263,6 +306,35 @@ internal sealed class ConstructionState
                 throw new InvalidDataException("Invalid construction operation receipt");
             result.receiptOrder.Enqueue(receipt.OperationId);
         }
+
+        long previousRevision = 0;
+        foreach (ConstructionChange change in document.Changes)
+        {
+            if (change == null || change.Revision < 1 ||
+                change.Revision > document.Revision ||
+                change.Nodes == null || change.Added == null ||
+                change.Removed == null ||
+                change.Nodes.Count > MaxCascade ||
+                change.Added.Count > MaxLinks ||
+                change.Removed.Count > MaxLinks ||
+                (previousRevision != 0 && change.Revision != previousRevision + 1) ||
+                change.Nodes.Any(node =>
+                    node == null || node.Id == Guid.Empty || node.Generation < 1 ||
+                    node.Revision != change.Revision || !ValidKey(node.Kind) ||
+                    !ValidBounds(node.Volume)) ||
+                change.Added.Concat(change.Removed).Any(link =>
+                    link == null || link.A == Guid.Empty || link.B == Guid.Empty ||
+                    link.A == link.B || link.GenerationA < 1 || link.GenerationB < 1 ||
+                    !Enum.IsDefined(typeof(ConstructionLinkKind), link.Kind)))
+                throw new InvalidDataException("Invalid construction change history");
+
+            result.changes.Enqueue(change.Copy());
+            previousRevision = change.Revision;
+        }
+        if ((document.Revision > 0 && result.changes.Count == 0) ||
+            (result.changes.Count > 0 &&
+             result.changes.Last().Revision != document.Revision))
+            throw new InvalidDataException("Incomplete construction change history");
 
         return result;
     }
@@ -394,8 +466,12 @@ internal sealed class ConstructionState
     }
 
     private ConstructionResult Record(Guid operationId, string signature,
-                                      int removed, int detached)
+                                      int removed, int detached,
+                                      ConstructionChange change)
     {
+        changes.Enqueue(change.Copy());
+        while (changes.Count > MaxChanges)
+            changes.Dequeue();
         receipts.Add(operationId, new ConstructionReceipt(
             operationId, signature, revision, removed, detached));
         receiptOrder.Enqueue(operationId);
@@ -460,6 +536,7 @@ internal sealed class ConstructionDocument
     public List<ConstructionNode> Nodes { get; set; } = new();
     public List<ConstructionLink> Links { get; set; } = new();
     public List<ConstructionReceipt> Receipts { get; set; } = new();
+    public List<ConstructionChange> Changes { get; set; } = new();
 }
 
 internal sealed record ConstructionReceipt(
@@ -472,3 +549,29 @@ internal sealed record ConstructionResult(
 
 internal sealed record ConstructionRemovalPlan(
     bool Allowed, string Reason, IReadOnlyList<Guid> EntityIds, int DetachedLinks);
+
+internal sealed class ConstructionChange
+{
+    public long Revision { get; set; }
+    public List<ConstructionNode> Nodes { get; set; } = new();
+    public List<ConstructionLink> Added { get; set; } = new();
+    public List<ConstructionLink> Removed { get; set; } = new();
+
+    public ConstructionChange() { }
+
+    public ConstructionChange(long revision,
+        List<ConstructionNode>? nodes = null,
+        List<ConstructionLink>? added = null,
+        List<ConstructionLink>? removed = null)
+    {
+        Revision = revision;
+        Nodes = nodes ?? new();
+        Added = added ?? new();
+        Removed = removed ?? new();
+    }
+
+    public ConstructionChange Copy() => new(Revision,
+        Nodes.Select(x => x.Copy()).ToList(),
+        Added.Select(x => x.Copy()).ToList(),
+        Removed.Select(x => x.Copy()).ToList());
+}
