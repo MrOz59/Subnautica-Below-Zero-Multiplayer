@@ -22,6 +22,9 @@ BOT Benson mod. Original project's restrictive notice is not a license grant.
 - Server-side **experimental** world-state library: revisioned UUID entities,
   tombstones, inventory idempotency, expiring ownership leases, a bounded
   change feed, and JSON snapshot persistence with manual backup recovery.
+- Independent quickslot and inventory-instance metadata (#78), plus integer
+  energy accounting with source generations (#81). Both have strict local
+  persistence and regression tests. Neither is connected to Unity gameplay.
   This is **not connected to actual gameplay or the UDP listener**.
 
 NOT implemented: actual player avatars, animation/vehicle/world replication,
@@ -62,6 +65,7 @@ python3 -m unittest discover -s launcher/tests -v
 dotnet run --project src/BelowZeroCoop.SmokeTests
 dotnet build src/BelowZeroCoop.Server -c Release
 dotnet run --project src/BelowZeroCoop.WorldTests -c Release
+dotnet run --project src/BelowZeroCoop.MetadataTests -c Release
 
 The CI compiles our plugin *source* against temporary stub APIs. This does not
 prove compatibility with real Unity or BepInEx binaries.
@@ -76,6 +80,7 @@ BepInEx and Unity/game assemblies are not bundled in the repository.
 - src/BelowZeroCoop.Server/: development server, loopback by default,
   plus standalone non-networked world persistence and ownership logic.
 - src/BelowZeroCoop.WorldTests/: construction and inventory regression tests.
+- src/BelowZeroCoop.MetadataTests/: versioned quickslot and energy tests.
 - src/BelowZeroCoop.Plugin/: BepInEx mod entry point.
 - src/BelowZeroCoop.SmokeTests/: packet format and interpolation tests.
 - src/BelowZeroCoop.Plugin.CompileCheck/: CI-only fake game API to syntax-check our plugin; never ship it.
@@ -92,7 +97,8 @@ tree at the repository's main branch has different authorship and restrictions:
 those files are not included in this branch.
 
 See docs/ARCHITECTURE.md, docs/ROADMAP.md,
-[the shared-world safety design](docs/WORLD_STATE.md), and
+[the shared-world safety design](docs/WORLD_STATE.md),
+[metadata and energy design](docs/METADATA_POWER.md), and
 [the review of the original project's first 100 issues](docs/UPSTREAM_ISSUES_1-100.md).
 
 The CI includes regression cases inspired by early upstream reports: concurrent

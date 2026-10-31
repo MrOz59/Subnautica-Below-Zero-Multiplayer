@@ -45,6 +45,11 @@ first-class runtime, while remaining compatible with Windows.
 - [x] JSON persistence and explicit previous-snapshot backup.
 - [x] Regressions for upstream #77, #82, #85, including restart recovery.
 - [ ] Integrate world events with authenticated game sessions and host checks.
+- [x] Independent, versioned quickslot metadata with migration and persistence,
+      covered by upstream #78 regressions (not yet in the Unity game).
+- [x] Deterministic integer base power accounting, source generations and
+      persistent snapshots, covered by upstream #81 regressions.
+- [ ] Bind these systems to authenticated game entities and the game save.
 - [ ] Creature synchronization and server ownership.
 - [ ] Seatruck / Prawn / Snowfox state and transitions.
 - [ ] Game-specific world save integration, migration and deterministic reconciliation.

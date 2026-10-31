@@ -34,8 +34,8 @@ The independent codebase is not copied from the original project.
 | [#82](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/82) | Bioreactor item persists after destroy-and-rebuild | Standalone UUID generations, tombstones, item transactions; integration pending |
 | [#85](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/85) | Another player's construction missing after re-entry | Detached full snapshots, bounded incremental deltas, local JSON persistence; durable journal and game integration pending |
 | [#6](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/6), [#10](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/10), [#12](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/12), [#79](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/79), [#80](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/80) | Illegal base changes, player collisions and construction remove/despawn errors | Check object preconditions and occupants on host; atomic builder transaction |
-| [#78](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/78) | Quickslots broke after metadata refactor | Versioned metadata schema, explicit migrations and round-trip tests |
-| [#13](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/13), [#81](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/81) | Energy production/consumption desync | Authoritative power graph, idempotent reconfiguration, time-delta integration |
+| [#78](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/78) | Quickslots broke after metadata refactor | Independent versioned quickslot metadata with explicit own-format migration and strict regression tests; game integration pending |
+| [#13](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/13), [#81](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/81) | Energy production/consumption desync | Independent fixed-point power model, source tombstones, idempotent updates and restart tests; game integration pending |
 | [#3](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/3), [#76](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/76) | Fabricator interaction can become stuck | Explicit interaction owner, timeout/release and one-time item delivery |
 | [#18](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/18) | Rejoining at last location, including base/Seatruck | Position + coordinate-space/vehicle attachment, server revision and safe spawn |
 | [#52](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/52) | Furniture looks wrong for another observer | Stable object transform and scene/space identity, not camera-relative positions |
@@ -77,3 +77,10 @@ persistent tombstones (#82), late-join snapshot + ordered change catch-up with
 fallback when the bounded history is exhausted (#85). **This engine is not
 attached to real Subnautica construction or inventory hooks yet.** An
 authenticated event channel and gameplay authority checks remain prerequisites.
+
+## Follow-up implementation: quickslots and power
+
+See [METADATA_POWER.md](METADATA_POWER.md). The standalone server domain now
+guards against silent slot loss during metadata migration (#78) and stale
+generation after a producer is removed (#81). Passing tests do not claim
+real Below Zero gameplay synchronization is complete.
