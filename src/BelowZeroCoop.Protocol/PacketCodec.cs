@@ -9,7 +9,9 @@ namespace BelowZeroCoop.Protocol
     public enum PacketType : byte
     {
         Ping = 1,
-        Pong = 2
+        Pong = 2,
+        Hello = 3,
+        HelloAck = 4
     }
 
     public struct Packet
@@ -29,9 +31,15 @@ namespace BelowZeroCoop.Protocol
         public const int WireVersion = 1;
         public const int PacketLength = 10;
 
+        private static bool IsSupported(PacketType type)
+        {
+            return type == PacketType.Ping || type == PacketType.Pong ||
+                   type == PacketType.Hello || type == PacketType.HelloAck;
+        }
+
         public static byte[] Encode(Packet packet)
         {
-            if (packet.Type != PacketType.Ping && packet.Type != PacketType.Pong)
+            if (!IsSupported(packet.Type))
                 throw new ArgumentOutOfRangeException(nameof(packet), "Unsupported packet type");
 
             uint sequence = packet.Sequence;
@@ -58,7 +66,7 @@ namespace BelowZeroCoop.Protocol
                 return false;
 
             PacketType type = (PacketType)data[5];
-            if (type != PacketType.Ping && type != PacketType.Pong)
+            if (!IsSupported(type))
                 return false;
 
             uint sequence = (uint)(data[6] |
