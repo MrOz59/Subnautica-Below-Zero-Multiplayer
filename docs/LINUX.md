@@ -9,7 +9,7 @@ Steam Play/Proton. This project does not claim a native Linux game port.
 2. Install the Windows x64 build of BepInEx 5 into the game directory, beside
    SubnauticaZero.exe. Do not use the Linux-native BepInEx build for Proton.
 3. Steam -> Below Zero -> Properties -> Launch Options:
-   WINEDLLOVERRIDES="winhttp=n,b" %command%
+   WINEDLLOVERRIDES="winhttp.dll=n,b" %command%
 4. Install Python 3 + Tkinter. On Debian/Ubuntu: sudo apt install python3-tk
 5. Run: python3 launcher/launcher.py
 6. Select the game's directory and use Diagnose. Custom Steam libraries and
