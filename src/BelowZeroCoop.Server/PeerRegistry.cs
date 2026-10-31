@@ -75,7 +75,10 @@ internal sealed class PeerRegistry
             double dy = packet.Y - sender.LastY;
             double dz = packet.Z - sender.LastZ;
             double distanceSquared = dx * dx + dy * dy + dz * dz;
-            double maxDistance = MaxMovementSpeed * Math.Max(senderElapsed, elapsed) + 2.0;
+            // Do not let a malicious or broken sender claim hours of elapsed
+            // time to bypass the per-snapshot maximum travel distance.
+            double boundedInterval = Math.Min(1.0, Math.Max(senderElapsed, elapsed));
+            double maxDistance = MaxMovementSpeed * boundedInterval + 2.0;
             if (distanceSquared > maxDistance * maxDistance)
                 return false;
         }

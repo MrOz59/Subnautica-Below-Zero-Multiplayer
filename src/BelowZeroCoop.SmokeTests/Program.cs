@@ -69,6 +69,10 @@ Check(smoother.Add(new MovementSnapshot(3, 10.10, 1000, 0, 0), 10.30),
 Check(smoother.TrySample(10.31, out position) && position.X == 1000,
       "teleport does not smear across the world");
 Check(smoother.Count == 1, "teleport clears old position history");
+Check(!smoother.Add(new MovementSnapshot(2, 10.05, 2, 0, 0), 10.35),
+      "late pre-teleport snapshot cannot undo teleport");
+Check(smoother.TrySample(10.36, out position) && position.X == 1000,
+      "remote remains at teleport destination");
 
 var wrapping = new MovementInterpolator();
 Check(wrapping.Add(new MovementSnapshot(uint.MaxValue, 1, 0, 0, 0), 1.15),

@@ -95,7 +95,16 @@ namespace BelowZeroCoop.Protocol
                     return false;
 
                 if (DistanceSquared(previous, sample) >= TeleportDistanceSquared)
-                    Reset();
+                {
+                    // Discard the old trajectory but retain sequence ordering.
+                    // Reset() here would permit delayed pre-teleport UDP packets
+                    // to repopulate the buffer and jerk the avatar backwards.
+                    snapshots.Clear();
+                    jitter = 0;
+                    highLatencySeconds = 0;
+                    lastSamplingTime = double.NaN;
+                    DelaySeconds = 0.12;
+                }
             }
 
             double observedOffset = arrivedAt - sample.SentAt;
