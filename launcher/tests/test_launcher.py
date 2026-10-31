@@ -150,5 +150,44 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse(list(folder.glob("*.bak")))
 
 
+    def test_development_server_rejects_unapproved_network_binding(self):
+        self.assertEqual(launcher.validate_server_endpoint("127.0.0.1", 27021),
+                         "127.0.0.1")
+        self.assertEqual(launcher.validate_server_endpoint("::1", 27021),
+                         "::1")
+        with self.assertRaises(ValueError):
+            launcher.validate_server_endpoint("0.0.0.0", 27021)
+        with self.assertRaises(ValueError):
+            launcher.validate_server_endpoint("192.168.1.20", 27021)
+        with self.assertRaises(ValueError):
+            launcher.validate_server_endpoint("127.0.0.1", 0)
+        with self.assertRaises(ValueError):
+            launcher.validate_server_endpoint("127.0.0.1", 65536)
+        with self.assertRaises(ValueError):
+            launcher.validate_server_endpoint("not an ip", 27021)
+        self.assertEqual(
+            launcher.validate_server_endpoint("0.0.0.0", 27021, allow_lan=True),
+            "0.0.0.0",
+        )
+
+    def test_development_server_logging_and_arguments(self):
+        root = self.root / "repo"
+        binary = root / "src" / "BelowZeroCoop.Server" / "bin" / "Release" / "net8.0" / "BelowZeroCoop.Server.dll"
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"fake-build-output")
+        config = self.root / "config" / "launcher.json"
+        fake_process = mock.Mock(pid=12345)
+        with (mock.patch.object(launcher, "PROJECT_ROOT", root),
+              mock.patch.object(launcher, "config_file", return_value=config),
+              mock.patch.object(launcher.shutil, "which", return_value="/usr/bin/dotnet"),
+              mock.patch.object(launcher.subprocess, "Popen", return_value=fake_process) as start):
+            launcher.start_server("127.0.0.1", 27021)
+        self.assertEqual(
+            start.call_args.args[0],
+            ["dotnet", str(binary), "--bind", "127.0.0.1", "--port", "27021"],
+        )
+        self.assertTrue((config.parent / "server.log").is_file())
+
+
 if __name__ == "__main__":
     unittest.main()
