@@ -85,5 +85,7 @@ Require(hooks.Count == 4 && hooks[0].Status == GameHookCatalog.ProbeStatus.Found
         "hook diagnostics distinguish found, overloaded and missing game methods");
 Require(GameHookCatalog.Targets.Count >= 30,
         "hook catalog covers core world, inventory and construction targets");
+Require(GameHookProbeFixture.InvokedCount == 0,
+        "reflection-only diagnostics must not invoke game methods");
 
 Console.WriteLine("Plugin syntax, disabled-singleplayer and fake-Unity lifecycle tests passed.");

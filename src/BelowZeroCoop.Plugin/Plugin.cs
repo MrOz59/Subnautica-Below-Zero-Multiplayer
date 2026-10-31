@@ -63,8 +63,13 @@ namespace BelowZeroCoop.Plugin
             Logger.LogInfo("BelowZeroCoop loaded. No playable multiplayer features yet.");
             if (scanGameHooksOnStartup.Value)
             {
+                // Only the actual game's Assembly-CSharp may satisfy a hook
+                // target. Another mod defining a same-named type is irrelevant.
+                var gameAssemblies = Array.FindAll(
+                    AppDomain.CurrentDomain.GetAssemblies(),
+                    assembly => assembly.GetName().Name == "Assembly-CSharp");
                 var results = GameHookCatalog.Probe(
-                    AppDomain.CurrentDomain.GetAssemblies(), GameHookCatalog.Targets);
+                    gameAssemblies, GameHookCatalog.Targets);
                 int found = 0, missing = 0, ambiguous = 0;
                 foreach (GameHookCatalog.Result item in results)
                 {

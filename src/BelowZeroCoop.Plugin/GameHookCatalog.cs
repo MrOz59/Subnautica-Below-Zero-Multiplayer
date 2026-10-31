@@ -179,8 +179,7 @@ namespace BelowZeroCoop.Plugin
 
                     MethodInfo[] matches = gameType.GetMethods(
                         BindingFlags.Public | BindingFlags.NonPublic |
-                        BindingFlags.Instance | BindingFlags.Static |
-                        BindingFlags.DeclaredOnly)
+                        BindingFlags.Instance | BindingFlags.Static)
                         .Where(m => m.Name == target.MethodName).ToArray();
 
                     if (matches.Length == 0)
