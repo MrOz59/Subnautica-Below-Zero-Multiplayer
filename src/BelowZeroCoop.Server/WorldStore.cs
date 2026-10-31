@@ -65,6 +65,23 @@ internal static class WorldStore
         try
         {
             using FileStream stream = File.OpenRead(fullPath);
+            if (stream.Length > 64L * 1024 * 1024)
+                throw new InvalidDataException("World snapshot exceeds the safety limit.");
+
+            // A syntactically valid '{}' or truncated-but-valid JSON object
+            // must NEVER be treated as an empty world. That would erase builds.
+            using (JsonDocument parsed = JsonDocument.Parse(stream))
+            {
+                if (parsed.RootElement.ValueKind != JsonValueKind.Object ||
+                    !parsed.RootElement.TryGetProperty("Version", out _) ||
+                    !parsed.RootElement.TryGetProperty("Revision", out _) ||
+                    !parsed.RootElement.TryGetProperty("Entities", out _) ||
+                    !parsed.RootElement.TryGetProperty("Receipts", out _))
+                    throw new InvalidDataException(
+                        "Incomplete world snapshot; use the explicit .bak recovery file.");
+            }
+
+            stream.Position = 0;
             WorldDocument? document = JsonSerializer.Deserialize<WorldDocument>(stream, Json);
             if (document == null)
                 throw new InvalidDataException("World snapshot is empty.");

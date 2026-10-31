@@ -92,6 +92,9 @@ internal sealed class WorldState
                     long newCount = (long)oldCount + command.QuantityDelta;
                     if (newCount < 0 || newCount > MaxItemQuantity)
                         return WorldResult.Rejected("invalid_quantity", revision);
+                    if (newCount > 0 && oldCount == 0 && current.Items.Count >= 128)
+                        return WorldResult.Rejected("inventory_capacity", revision);
+
                     if (newCount == 0)
                         current.Items.Remove(command.Item!);
                     else
@@ -200,7 +203,7 @@ internal sealed class WorldState
             if (entity == null || entity.Id == Guid.Empty ||
                 entity.Generation < 1 || entity.Revision <= 0 ||
                 entity.Revision > document.Revision ||
-                string.IsNullOrWhiteSpace(entity.Kind) || entity.Kind.Length > 64 ||
+                !ValidKey(entity.Kind) ||
                 entity.Items == null || entity.Items.Count > 128 ||
                 entity.Items.Any(pair => !ValidKey(pair.Key) ||
                     pair.Value <= 0 || pair.Value > MaxItemQuantity) ||
@@ -213,6 +216,7 @@ internal sealed class WorldState
         {
             if (receipt == null || receipt.CommandId == Guid.Empty ||
                 string.IsNullOrEmpty(receipt.Signature) ||
+                receipt.Signature.Length > 1024 ||
                 receipt.Revision <= 0 || receipt.Revision > document.Revision ||
                 !restored.receipts.TryAdd(receipt.CommandId, receipt))
                 throw new InvalidDataException("Snapshot has invalid operation receipt.");

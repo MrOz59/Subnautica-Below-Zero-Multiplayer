@@ -117,8 +117,8 @@ DateTime now = new(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
               "reloaded world retains global revision");
         Check(Get(reloaded, chestId).Items["Battery"] == 3,
               "reloaded world retains construction inventory");
-        Check(!reloaded.Apply(inventory, now).Duplicate == false,
-              "operation receipt preserved"); // duplicate is expected
+        Check(reloaded.Apply(inventory, now).Duplicate,
+              "operation receipt preserved across process restarts");
         Check(Get(reloaded, chestId).Items["Battery"] == 3,
               "replay after restart never duplicates inventory");
 
@@ -129,6 +129,12 @@ DateTime now = new(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
         // Save again so there is an explicit recovery backup.
         WorldStore.Save(path, reloaded);
         Check(File.Exists(path + ".bak"), "previous complete snapshot retained");
+        File.WriteAllText(path, "{}");
+        bool incomplete = false;
+        try { WorldStore.Load(path); }
+        catch (InvalidDataException) { incomplete = true; }
+        Check(incomplete, "empty or truncated world JSON cannot erase constructions");
+
         File.WriteAllText(path, "{ broken json");
         bool corrupted = false;
         try { WorldStore.Load(path); }
