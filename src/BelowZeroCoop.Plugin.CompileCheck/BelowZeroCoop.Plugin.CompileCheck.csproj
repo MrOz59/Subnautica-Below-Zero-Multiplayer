@@ -13,6 +13,7 @@
     <Compile Include="../BelowZeroCoop.Plugin/MovementPreview.cs" Link="MovementPreview.cs" />
     <Compile Include="../BelowZeroCoop.Plugin/GameHookCatalog.cs" Link="GameHookCatalog.cs" />
     <Compile Include="../BelowZeroCoop.Plugin/BuildingHookObserver.cs" Link="BuildingHookObserver.cs" />
+    <Compile Include="../BelowZeroCoop.Plugin/ConstructionGameSnapshotProbe.cs" Link="ConstructionGameSnapshotProbe.cs" />
     <Compile Include="HarmonyFake.cs" />
     <Compile Include="GameApiStubs.cs" />
     <Compile Include="Program.cs" />

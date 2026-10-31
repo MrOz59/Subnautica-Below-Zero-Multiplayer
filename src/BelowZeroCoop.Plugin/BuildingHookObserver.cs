@@ -42,14 +42,17 @@ namespace BelowZeroCoop.Plugin
             internal readonly string RuntimeType;
             internal readonly int VolatileInstanceToken;
             internal readonly DateTime ObservedUtc;
+            internal readonly ConstructionGameSnapshotProbe.Snapshot Game;
 
             internal Observation(string eventName, string runtimeType,
-                int volatileInstanceToken, DateTime observedUtc)
+                int volatileInstanceToken, DateTime observedUtc,
+                ConstructionGameSnapshotProbe.Snapshot game)
             {
                 EventName = eventName;
                 RuntimeType = runtimeType;
                 VolatileInstanceToken = volatileInstanceToken;
                 ObservedUtc = observedUtc;
+                Game = game;
             }
         }
 
@@ -190,9 +193,15 @@ namespace BelowZeroCoop.Plugin
 
                 // RuntimeHelpers token is process-local and NOT an entity UUID.
                 // Never use it as a persistent or network identity.
+                // Game object metadata is captured on the invoking game
+                // thread, not dereferenced later from a stale Unity object.
+                // This is a diagnostic candidate: ID/source/finish must be
+                // validated before building any host-authoritative event.
+                var snapshot = ConstructionGameSnapshotProbe.Capture(eventName, instance);
                 var observation = new Observation(eventName,
                     instance.GetType().FullName ?? "<unknown>",
-                    RuntimeHelpers.GetHashCode(instance), DateTime.UtcNow);
+                    RuntimeHelpers.GetHashCode(instance), DateTime.UtcNow,
+                    snapshot);
                 lock (receiver.gate)
                 {
                     if (receiver.disposed)

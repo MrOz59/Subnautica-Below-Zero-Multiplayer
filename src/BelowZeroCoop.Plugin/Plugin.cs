@@ -143,8 +143,20 @@ namespace BelowZeroCoop.Plugin
             {
                 foreach (var observed in buildingObserver.Drain(8))
                 {
+                    var game = observed.Game;
+                    var pos = game.WorldTransform;
+                    string location = pos == null ? "unknown" :
+                        pos.X.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "," +
+                        pos.Y.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "," +
+                        pos.Z.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
                     Logger.LogInfo("[BuildObserve] " + observed.EventName +
                         " type=" + observed.RuntimeType +
+                        " rawGameId=" + (game.ObservedObjectId ?? "unavailable") +
+                        " parentBaseId=" + (game.TargetBaseId ?? "unavailable") +
+                        " tech=" + (game.TechType ?? "unknown") +
+                        " stage=" + game.CompletionEvidence +
+                        " origin=" + game.Origin +
+                        " xyz=" + location +
                         " volatileInstance=" + observed.VolatileInstanceToken +
                         " utc=" + observed.ObservedUtc.ToString("o"));
                 }
