@@ -220,12 +220,20 @@ static PowerCommand Device(long revision, PowerAction action,
           "power graph and stored energy survive snapshot reload");
     Check(restored.Apply(stopSolar).Duplicate,
           "replayed remove cannot delete replacement generation");
-    Check(restored.TryRebaseClock(0),
-          "restored grid can explicitly adopt a new process clock");
+    // Rebase must happen BEFORE the first simulation tick. A live,
+    // already-advanced grid must refuse a second clock reset.
     Check(!restored.TryRebaseClock(0),
+          "running grid cannot rebase after processing new ticks");
+    var rebooted = PowerGridState.Restore(power.Snapshot());
+    Check(rebooted.TryRebaseClock(0),
+          "restored grid can explicitly adopt a new process clock");
+    Check(!rebooted.TryRebaseClock(0),
           "clock rebasing is a one-shot recovery operation");
-    Check(restored.Snapshot().EnergyMilliUnits == 8000,
+    Check(rebooted.Snapshot().EnergyMilliUnits == 4000,
           "clock rebasing never grants offline generator energy");
+    Check(rebooted.TryAdvance(1000, out PowerBalance afterRestart) &&
+          afterRestart.StoredMilliUnits == 8000,
+          "energy accounting resumes at new monotonic timebase");
     Check(restored.Snapshot().Devices.Single(x => x.Id == solar).Generation == 2,
           "rebuild generation remains intact after old event replay");
 
