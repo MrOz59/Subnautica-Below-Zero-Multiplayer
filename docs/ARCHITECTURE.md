@@ -22,13 +22,13 @@ Protocol (C#, .NET Standard 2.0)
   - Standalone codec usable by the mod and server.
   - Format v1: ASCII BZC0 (4 bytes), version (1), type (1),
     little-endian uint sequence (4) = 10 bytes.
-  - Type 1 = Ping; type 2 = Pong.
+  - Type 1 = Ping; type 2 = Pong; type 3 = Hello; type 4 = HelloAck.
   - Unknown versions and packet types rejected.
   - No compatibility promise while in development.
 
 Server (C#, .NET 8)
   - Development UDP Ping/Pong listener; 127.0.0.1 only by default.
-  - No authentication, authorization, world or gameplay authority yet.
+  - A Hello is required before Ping; endpoint sessions expire after 30s.\n  - No real authentication, authorization, world or gameplay authority yet.
   - Must not be publicly exposed in this state.
 
 ## Security and interoperability tasks before a multiplayer alpha
