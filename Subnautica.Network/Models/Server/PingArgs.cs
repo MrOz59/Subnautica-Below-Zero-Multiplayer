@@ -39,5 +39,9 @@
          */
         [Key(5)]
         public double ServerTime { get; set; }
+
+        // Allows the client to ignore delayed responses after a lost ping.
+        [Key(6)]
+        public uint PingSequence { get; set; }
     }
 }
