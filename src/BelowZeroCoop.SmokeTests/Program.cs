@@ -30,6 +30,16 @@ Check(decodedPong.Type == PacketType.Pong && decodedPong.Sequence == uint.MaxVal
       "sequence max supported");
 
 
+foreach (PacketType type in new[]
+{
+    PacketType.Welcome, PacketType.PeerLeft, PacketType.Goodbye
+})
+{
+    var control = PacketCodec.Encode(new Packet(type, 99));
+    Check(PacketCodec.TryDecode(control, out Packet parsed), "lifecycle packet decode");
+    Check(parsed.Type == type && parsed.Sequence == 99, "lifecycle packet roundtrip");
+}
+
 var hello = PacketCodec.Encode(new Packet(PacketType.Hello, 42));
 Check(PacketCodec.TryDecode(hello, out Packet decodedHello), "hello decoded");
 Check(decodedHello.Type == PacketType.Hello && decodedHello.Sequence == 42, "hello roundtrip");

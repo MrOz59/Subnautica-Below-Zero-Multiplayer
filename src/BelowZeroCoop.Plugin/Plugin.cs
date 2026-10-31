@@ -218,7 +218,9 @@ namespace BelowZeroCoop.Plugin
                     Packet packet;
                     if (!PacketCodec.TryDecode(bytes, out packet))
                         continue;
-                    if (packet.Type == PacketType.Welcome && handshakeComplete)
+                    // UDP may deliver Welcome before HelloAck: remember the
+                    // server identity regardless of their receive order.
+                    if (packet.Type == PacketType.Welcome)
                     {
                         assignedPeerId = packet.Sequence;
                         continue;
@@ -234,7 +236,6 @@ namespace BelowZeroCoop.Plugin
                         !handshakeComplete && packet.Sequence == lastHelloSequence)
                     {
                         handshakeComplete = true;
-                        assignedPeerId = 0;
                         awaitingPong = false;
                         missedPongs = 0;
                         nextPingAt = receivedAt;

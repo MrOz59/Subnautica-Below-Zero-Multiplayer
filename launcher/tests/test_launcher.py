@@ -170,6 +170,19 @@ class LauncherTests(unittest.TestCase):
             "0.0.0.0",
         )
 
+    def test_launcher_explicit_lan_flag_is_forwarded(self):
+        root = self.root / "repo"
+        binary = root / "src" / "BelowZeroCoop.Server" / "bin" / "Release" / "net8.0" / "BelowZeroCoop.Server.dll"
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"fake")
+        config = self.root / "config" / "launcher.json"
+        with (mock.patch.object(launcher, "PROJECT_ROOT", root),
+              mock.patch.object(launcher, "config_file", return_value=config),
+              mock.patch.object(launcher.shutil, "which", return_value="/usr/bin/dotnet"),
+              mock.patch.object(launcher.subprocess, "Popen", return_value=mock.Mock(pid=12)) as process):
+            launcher.start_server("0.0.0.0", 27021, allow_lan=True)
+        self.assertEqual(process.call_args.args[0][-1], "--allow-lan")
+
     def test_development_server_logging_and_arguments(self):
         root = self.root / "repo"
         binary = root / "src" / "BelowZeroCoop.Server" / "bin" / "Release" / "net8.0" / "BelowZeroCoop.Server.dll"

@@ -293,9 +293,12 @@ def start_server(bind: str = "127.0.0.1", port: int = 27021, allow_lan: bool = F
 
     log_path = config_file().parent / "server.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    arguments = ["dotnet", str(selected), "--bind", bind, "--port", str(port)]
+    if allow_lan:
+        arguments.append("--allow-lan")
     with log_path.open("a", encoding="utf-8") as output:
         process = subprocess.Popen(
-            ["dotnet", str(selected), "--bind", bind, "--port", str(port)],
+            arguments,
             cwd=str(PROJECT_ROOT), stdout=output, stderr=subprocess.STDOUT,
             start_new_session=True,
         )
