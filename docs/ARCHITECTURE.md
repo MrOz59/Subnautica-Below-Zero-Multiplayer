@@ -24,11 +24,12 @@ Protocol (C#, .NET Standard 2.0)
     little-endian uint sequence (4) = 10 bytes.
   - Type 1 = Ping; type 2 = Pong; type 3 = Hello; type 4 = HelloAck.
   - Unknown versions and packet types rejected.
-  - No compatibility promise while in development.
+  - Pure .NET interpolation buffer accepts monotonic movement snapshots,\n    rejects stale packets, and clamps extrapolation for high RTT.\n  - The buffer is not yet connected to remote Unity player objects.\n  - No compatibility promise while in development.
 
 Server (C#, .NET 8)
   - Development UDP Ping/Pong listener; 127.0.0.1 only by default.
-  - A Hello is required before Ping; endpoint sessions expire after 30s.\n  - No real authentication, authorization, world or gameplay authority yet.
+  - A Hello is required before Ping; endpoint sessions expire after 30s.
+  - No real authentication, authorization, world or gameplay authority yet.
   - Must not be publicly exposed in this state.
 
 ## Security and interoperability tasks before a multiplayer alpha
