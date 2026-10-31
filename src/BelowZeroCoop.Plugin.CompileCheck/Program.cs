@@ -128,6 +128,31 @@ new Constructable().Construct();
 Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
         "vanilla construction remains callable after observer cleanup");
 
+// Other mods' Harmony owner IDs must survive our own cleanup.
+var foreignMethod = typeof(Constructable).GetMethod("Construct");
+var foreignOwner = new HarmonyLib.Harmony("test.foreign.harmony.owner");
+foreignOwner.Patch(foreignMethod, postfix: new HarmonyLib.HarmonyMethod(
+    typeof(GameHookProbeFixture).GetMethod("ForeignPostfix")));
+Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 1,
+        "foreign owner installed its own independent postfix");
+using (var local = new BuildingHookObserver())
+{
+    Require(local.Install(gameAssembly, BuildingHookObserver.DefaultTargets(), null) == 2,
+            "our passive observers install alongside unrelated mod patches");
+    Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 3,
+            "foreign patch remains visible while our two hooks are enabled");
+}
+Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 1,
+        "unpatch removes only BelowZeroCoop Harmony owner, not another plugin");
+int previousForeignCalls = GameHookProbeFixture.ForeignPostfixCount;
+new Constructable().Construct();
+Require(GameHookProbeFixture.ForeignPostfixCount == previousForeignCalls + 1,
+        "foreign owner's postfix still executes after our observer is stopped");
+foreignOwner.Unpatch(foreignMethod, HarmonyLib.HarmonyPatchType.Postfix,
+    "test.foreign.harmony.owner");
+Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
+        "test-only foreign owner cleans up separately");
+
 using (var ambiguous = new BuildingHookObserver())
 {
     int installed = ambiguous.Install(gameAssembly, new[]

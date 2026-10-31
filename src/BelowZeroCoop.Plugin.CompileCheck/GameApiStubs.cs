@@ -124,7 +124,12 @@ namespace BepInEx
 public sealed class GameHookProbeFixture
 {
     public static int InvokedCount { get; private set; }
+    public static int ForeignPostfixCount { get; private set; }
     public void Present() { InvokedCount++; }
+    public static void ForeignPostfix(object __instance)
+    {
+        ForeignPostfixCount++;
+    }
     public void Overloaded(int value) { }
     public void Overloaded(string value) { }
 }
