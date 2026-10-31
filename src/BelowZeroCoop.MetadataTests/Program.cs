@@ -220,6 +220,12 @@ static PowerCommand Device(long revision, PowerAction action,
           "power graph and stored energy survive snapshot reload");
     Check(restored.Apply(stopSolar).Duplicate,
           "replayed remove cannot delete replacement generation");
+    Check(restored.TryRebaseClock(0),
+          "restored grid can explicitly adopt a new process clock");
+    Check(!restored.TryRebaseClock(0),
+          "clock rebasing is a one-shot recovery operation");
+    Check(restored.Snapshot().EnergyMilliUnits == 8000,
+          "clock rebasing never grants offline generator energy");
     Check(restored.Snapshot().Devices.Single(x => x.Id == solar).Generation == 2,
           "rebuild generation remains intact after old event replay");
 
@@ -239,6 +245,12 @@ static PowerCommand Device(long revision, PowerAction action,
         var recovered = GameplayStore.LoadPower(path);
         Check(recovered.Snapshot().EnergyMilliUnits == 8000,
               "stored energy survives disk persistence");
+        Check(recovered.TryRebaseClock(0),
+              "fresh process can rebase an energy grid without stale ticks");
+        Check(recovered.TryAdvance(1000, out PowerBalance afterRebase) &&
+              afterRebase.StoredMilliUnits == 10000 &&
+              afterRebase.SpilledMilliUnits == 2000,
+              "power accounting resumes after restart without retroactive catch-up");
         Check(recovered.Apply(stopSolar).Duplicate,
               "old power removal stays idempotent after restart");
         Check(recovered.Snapshot().Devices.Single(x => x.Id == solar).Generation == 2,
@@ -251,7 +263,7 @@ static PowerCommand Device(long revision, PowerAction action,
         try { GameplayStore.LoadPower(path); }
         catch (InvalidDataException) { powerFileCorrupt = true; }
         Check(powerFileCorrupt, "invalid power JSON cannot silently reset grid");
-        Check(GameplayStore.LoadPower(path + ".bak").Snapshot().EnergyMilliUnits == 8000,
+        Check(GameplayStore.LoadPower(path + ".bak").Snapshot().EnergyMilliUnits == 10000,
               "explicit power backup remains recoverable");
 
         var incomplete = JsonNode.Parse(File.ReadAllText(path + ".bak"))!;

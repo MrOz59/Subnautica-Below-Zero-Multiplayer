@@ -31,6 +31,7 @@ internal sealed class PowerGridState
     private long consumerRemainder;
     private long totalUnserved;
     private long totalSpilled;
+    private bool canRebaseClock;
 
     public PowerGridState(Guid gridId, long capacityMilliUnits, long initialMilliUnits = 0,
                           long initialTickMs = 0)
@@ -140,6 +141,23 @@ internal sealed class PowerGridState
     /// Consumption is always deducted when devices are active; a removed
     /// device makes no contribution starting with the NEXT tick.
     /// </summary>
+    /// <summary>
+    /// Reconcile a newly started process's monotonic clock after restoring a
+    /// snapshot. Does NOT generate or consume offline energy. Can be invoked
+    /// only once after Restore, before the next successful simulation tick.
+    /// </summary>
+    public bool TryRebaseClock(long nowMs)
+    {
+        lock (gate)
+        {
+            if (!canRebaseClock || nowMs < 0)
+                return false;
+            lastTickMs = nowMs;
+            canRebaseClock = false;
+            return true;
+        }
+    }
+
     public bool TryAdvance(long nowMs, out PowerBalance balance)
     {
         lock (gate)
@@ -149,6 +167,7 @@ internal sealed class PowerGridState
                 return false;
 
             long delta = nowMs - lastTickMs;
+            canRebaseClock = false;
             if (delta == 0)
                 return true;
 
@@ -227,7 +246,8 @@ internal sealed class PowerGridState
             generatorRemainder = document.GeneratorRemainder,
             consumerRemainder = document.ConsumerRemainder,
             totalUnserved = document.TotalUnservedMilliUnits,
-            totalSpilled = document.TotalSpilledMilliUnits
+            totalSpilled = document.TotalSpilledMilliUnits,
+            canRebaseClock = true
         };
 
         foreach (PowerDevice device in document.Devices)
