@@ -27,6 +27,14 @@ internal sealed class ConstructionState
     {
         lock (gate)
         {
+            // Reject nonfinite/invalid geometry BEFORE JSON serialization:
+            // System.Text.Json rejects NaN/Infinity and must not throw from
+            // a malformed or untrusted placement request.
+            if (!ValidKey(kind) || !ValidBounds(bounds) ||
+                trustedPlayerVolumes == null ||
+                !ValidVolumes(trustedPlayerVolumes))
+                return Reject("invalid_placement");
+
             string signature = JsonSerializer.Serialize(new
             {
                 Action = "Place", expectedRevision, entityId, generation, kind, bounds
@@ -34,9 +42,7 @@ internal sealed class ConstructionState
             if (Replay(commandId, signature, out ConstructionResult replay))
                 return replay;
 
-            if (!Ready(commandId, expectedRevision) || !ValidKey(kind) ||
-                !ValidBounds(bounds) || trustedPlayerVolumes == null ||
-                !ValidVolumes(trustedPlayerVolumes) ||
+            if (!Ready(commandId, expectedRevision) ||
                 trustedPlayerVolumes.Any(bounds.Intersects))
                 return Reject("invalid_placement");
 
@@ -65,7 +71,7 @@ internal sealed class ConstructionState
                 });
             }
 
-            return Record(commandId, signature, 1, 0);
+            return Record(commandId, signature, 0, 0);
         }
     }
 
@@ -162,6 +168,9 @@ internal sealed class ConstructionState
     {
         lock (gate)
         {
+            if (commandId == Guid.Empty)
+                return Reject("invalid_command");
+
             // Occupancy is intentionally excluded from the idempotency
             // signature because it is ephemeral world-authority context.
             string signature = JsonSerializer.Serialize(new
