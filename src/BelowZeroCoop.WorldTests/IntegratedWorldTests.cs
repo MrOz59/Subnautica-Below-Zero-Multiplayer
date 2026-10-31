@@ -299,6 +299,20 @@ internal static class IntegratedWorldTests
                 refused = true;
             }
             Check(refused, "world registry cannot disagree with construction identity");
+            tampered = JsonNode.Parse(File.ReadAllText(path + ".bak"))!;
+            tampered["Power"]!.AsObject().Remove("EnergyMilliUnits");
+            File.WriteAllText(path, tampered.ToJsonString());
+            refused = false;
+            try
+            {
+                using var lostEnergy = new IntegratedWorldSession(
+                    path, gridId, 10000, new[] { Recipe });
+            }
+            catch (InvalidDataException)
+            {
+                refused = true;
+            }
+            Check(refused, "missing power balance must never reset to zero silently");
         }
         finally
         {
