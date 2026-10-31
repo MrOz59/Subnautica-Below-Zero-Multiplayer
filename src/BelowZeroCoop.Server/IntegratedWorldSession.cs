@@ -404,9 +404,10 @@ internal sealed class IntegratedWorldSession : IDisposable
         foreach (FabricationStation station in snapshot.Fabrication.Stations)
         {
             if (!nodes.TryGetValue(station.Id, out ConstructionNode? node) ||
-                node.Kind != "Fabricator" || node.Generation < station.Generation ||
+                node.Generation < station.Generation ||
                 (!station.Deleted &&
-                 (node.Deleted || node.Generation != station.Generation)))
+                 (node.Kind != "Fabricator" || node.Deleted ||
+                  node.Generation != station.Generation)))
                 throw new InvalidDataException(
                     "Fabricator lacks matching construction");
         }

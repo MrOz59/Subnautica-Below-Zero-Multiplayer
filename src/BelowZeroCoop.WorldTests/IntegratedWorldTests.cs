@@ -92,6 +92,11 @@ internal static class IntegratedWorldTests
                 Check(state.Construction.Nodes.All(n => n.Deleted) &&
                       state.Construction.Links.Count == 0,
                       "cascade deleted all structures and their power wires");
+                Check(state.World.Entities.Count == 3 &&
+                      state.World.Entities.All(e => e.Deleted) &&
+                      state.World.Entities.Select(e => e.Id).OrderBy(id => id)
+                        .SequenceEqual(state.Construction.Nodes.Select(n => n.Id).OrderBy(id => id)),
+                      "WorldState and topology tombstone exact same entities");
                 Check(state.Power.Devices.Count == 2 &&
                       state.Power.Devices.All(d => d.Deleted),
                       "both power devices were tombstoned with their constructions");
@@ -118,6 +123,7 @@ internal static class IntegratedWorldTests
                 var state = reopened.Snapshot();
                 Check(state.Revision == committedRevision &&
                       state.Construction.Nodes.All(n => n.Deleted) &&
+                      state.World.Entities.All(e => e.Deleted) &&
                       state.Power.Devices.All(d => d.Deleted) &&
                       state.Fabrication.Jobs.Single().Status == FabricationStatus.Cancelled &&
                       state.Fabrication.Inventories.Single().Materials["copper"] == 2,
@@ -131,6 +137,10 @@ internal static class IntegratedWorldTests
                     state.Construction.Revision, fab, 2, "Fabricator",
                     At(20), Nobody).Applied,
                     "Fabricator can be reconstructed using next generation");
+                Check(reopened.Snapshot().World.Entities.Single(e => e.Id == fab)
+                    .Generation == 2 &&
+                      !reopened.Snapshot().World.Entities.Single(e => e.Id == fab).Deleted,
+                    "WorldState mirrored reconstruction generation");
                 var craft = reopened.BeginCraft(Guid.NewGuid(), fab, 2, 10,
                     "battery", NowUtc.AddSeconds(10));
                 Check(craft.Started, "reconstructed Fabricator can use refunded inputs");
@@ -225,8 +235,9 @@ internal static class IntegratedWorldTests
             }
             Check(failed, "save failure propagated instead of reporting success");
             Check(session.Snapshot().Revision == 0 &&
-                  session.Snapshot().Construction.Nodes.Count == 0,
-                  "failed commit never published tentative construction");
+                  session.Snapshot().Construction.Nodes.Count == 0 &&
+                  session.Snapshot().World.Entities.Count == 0,
+                  "failed commit never published tentative construction or world entry");
         }
         finally
         {
@@ -271,8 +282,23 @@ internal static class IntegratedWorldTests
             File.WriteAllText(path, json.ToJsonString());
             using var restored = new IntegratedWorldSession(
                 path, gridId, 10000, new[] { Recipe });
-            Check(restored.Snapshot().Construction.Nodes.Count == 1,
-                "manual backup recovery restores an entire valid aggregate");
+            Check(restored.Snapshot().Construction.Nodes.Count == 1 &&
+                  restored.Snapshot().World.Entities.Count == 1,
+                "manual backup recovery restores a matching complete aggregate");
+            var tampered = JsonNode.Parse(File.ReadAllText(path))!;
+            tampered["World"]!["Entities"]!.AsArray()[0]!["Kind"] = "OtherThing";
+            File.WriteAllText(path, tampered.ToJsonString());
+            refused = false;
+            try
+            {
+                using var wrongIndex = new IntegratedWorldSession(
+                    path, gridId, 10000, new[] { Recipe });
+            }
+            catch (InvalidDataException)
+            {
+                refused = true;
+            }
+            Check(refused, "world registry cannot disagree with construction identity");
         }
         finally
         {
