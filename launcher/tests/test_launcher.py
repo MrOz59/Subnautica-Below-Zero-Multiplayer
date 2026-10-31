@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -78,6 +79,75 @@ class LauncherTests(unittest.TestCase):
     def test_proton_options(self):
         self.assertIn("WINEDLLOVERRIDES", launcher.STEAM_PROTON_OPTIONS)
         self.assertIn("%command%", launcher.STEAM_PROTON_OPTIONS)
+
+
+    def test_conflict_on_second_assembly_leaves_first_unchanged(self):
+        game = self.game()
+        self.loader(game)
+        output = game / "BepInEx" / "plugins" / "BelowZeroCoop"
+        output.mkdir(parents=True, exist_ok=True)
+        (output / launcher.PROTOCOL_NAME).write_bytes(b"old-protocol")
+
+        source = self.root / "build"
+        source.mkdir()
+        plugin = source / launcher.PLUGIN_NAME
+        protocol = source / launcher.PROTOCOL_NAME
+        plugin.write_bytes(b"new-plugin")
+        protocol.write_bytes(b"new-protocol")
+
+        with self.assertRaises(FileExistsError):
+            launcher.install_plugin(game, plugin, protocol)
+        self.assertFalse((output / launcher.PLUGIN_NAME).exists())
+        self.assertEqual((output / launcher.PROTOCOL_NAME).read_bytes(), b"old-protocol")
+
+    def test_installer_restores_existing_files_after_commit_failure(self):
+        game = self.game()
+        self.loader(game)
+        output = game / "BepInEx" / "plugins" / "BelowZeroCoop"
+        output.mkdir(parents=True, exist_ok=True)
+        (output / launcher.PLUGIN_NAME).write_bytes(b"old-plugin")
+        (output / launcher.PROTOCOL_NAME).write_bytes(b"old-protocol")
+
+        source = self.root / "build"
+        source.mkdir()
+        plugin = source / launcher.PLUGIN_NAME
+        protocol = source / launcher.PROTOCOL_NAME
+        plugin.write_bytes(b"new-plugin")
+        protocol.write_bytes(b"new-protocol")
+
+        original_replace = launcher.os.replace
+        calls = 0
+
+        def fail_second_install(source_path, dest_path):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("simulated installation failure")
+            return original_replace(source_path, dest_path)
+
+        with mock.patch.object(launcher.os, "replace", side_effect=fail_second_install):
+            with self.assertRaises(OSError):
+                launcher.install_plugin(game, plugin, protocol, force=True)
+
+        self.assertEqual((output / launcher.PLUGIN_NAME).read_bytes(), b"old-plugin")
+        self.assertEqual((output / launcher.PROTOCOL_NAME).read_bytes(), b"old-protocol")
+        self.assertFalse(list(output.glob(".bzc-*.tmp")))
+
+    def test_idempotent_install_has_no_backups(self):
+        game = self.game()
+        self.loader(game)
+        source = self.root / "build"
+        source.mkdir()
+        plugin = source / launcher.PLUGIN_NAME
+        protocol = source / launcher.PROTOCOL_NAME
+        plugin.write_bytes(b"plugin")
+        protocol.write_bytes(b"protocol")
+        launcher.install_plugin(game, plugin, protocol)
+        log = launcher.install_plugin(game, plugin, protocol)
+        self.assertEqual(len(log), 2)
+        self.assertTrue(all("Unchanged:" in message for message in log))
+        folder = game / "BepInEx" / "plugins" / "BelowZeroCoop"
+        self.assertFalse(list(folder.glob("*.bak")))
 
 
 if __name__ == "__main__":
