@@ -206,24 +206,56 @@ internal sealed class FabricationState
             if (job.Status == FabricationStatus.Claimed)
                 return new FabricationClaimResult(true, false, "already_claimed",
                     job.OutputItemId, job.OutputType);
+            if (job.Status == FabricationStatus.Delivering)
+                return new FabricationClaimResult(true, false, "pending_delivery",
+                    job.OutputItemId, job.OutputType);
             if (job.Status != FabricationStatus.Ready)
                 return FabricationClaimResult.Reject("not_ready");
 
-            job.Status = FabricationStatus.Claimed;
+            // Prepare a durable outbox entry. This is NOT an inventory add.
+            // The real adapter must persist this before applying a unique
+            // item to inventory, and then acknowledge it after inventory save.
+            job.Status = FabricationStatus.Delivering;
             revision++;
-            return new FabricationClaimResult(true, true, "claimed",
+            return new FabricationClaimResult(true, true, "delivery_prepared",
                 job.OutputItemId, job.OutputType);
         }
     }
 
-    public bool Cancel(Guid jobId, uint verifiedActor)
+    /// <summary>
+    /// Called only after the resulting inventory has been durably applied.
+    /// Multiple acknowledgements for the same output are idempotent.
+    /// </summary>
+    public bool ConfirmDelivery(Guid jobId, uint verifiedActor, Guid outputItemId)
     {
         lock (gate)
         {
-            if (verifiedActor == 0 || !jobs.TryGetValue(jobId, out FabricationJob? job) ||
+            if (verifiedActor == 0 ||
+                !jobs.TryGetValue(jobId, out FabricationJob? job) ||
+                job.OwnerId != verifiedActor || job.OutputItemId != outputItemId)
+                return false;
+
+            if (job.Status == FabricationStatus.Claimed)
+                return true;
+            if (job.Status != FabricationStatus.Delivering)
+                return false;
+
+            job.Status = FabricationStatus.Claimed;
+            revision++;
+            return true;
+        }
+    }
+
+    public bool Cancel(Guid jobId, uint verifiedActor, DateTime utcNow)
+    {
+        lock (gate)
+        {
+            if (verifiedActor == 0 || !Utc(utcNow) ||
+                !jobs.TryGetValue(jobId, out FabricationJob? job) ||
                 job.OwnerId != verifiedActor)
                 return false;
 
+            AdvanceInternal(utcNow);
             if (job.Status == FabricationStatus.Cancelled)
                 return true;
             if (job.Status != FabricationStatus.Running)
@@ -365,7 +397,14 @@ internal sealed class FabricationState
 internal sealed record FabricationRecipe(string Id, string OutputType,
                                          TimeSpan Duration);
 
-internal enum FabricationStatus { Running = 1, Ready = 2, Claimed = 3, Cancelled = 4 }
+internal enum FabricationStatus
+{
+    Running = 1,
+    Ready = 2,
+    Claimed = 3,
+    Cancelled = 4,
+    Delivering = 5
+}
 
 internal sealed class FabricationStation
 {

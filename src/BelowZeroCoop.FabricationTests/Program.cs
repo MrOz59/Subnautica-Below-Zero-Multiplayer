@@ -54,8 +54,19 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
     FabricationClaimResult duplicate = machine.Claim(
         firstJobId, 10, start.AddSeconds(2));
     Check(duplicate.Allowed && !duplicate.NewlyClaimed &&
-          duplicate.OutputItemId == first.OutputItemId,
-          "repeated claim does not grant another item");
+          duplicate.OutputItemId == first.OutputItemId &&
+          duplicate.Reason == "pending_delivery",
+          "repeated claim returns the same pending delivery ticket");
+    Check(!machine.ConfirmDelivery(firstJobId, 20, first.OutputItemId),
+          "another actor cannot acknowledge someone else's item");
+    Check(!machine.ConfirmDelivery(firstJobId, 10, Guid.NewGuid()),
+          "an unrelated inventory item cannot complete the delivery");
+    Check(machine.ConfirmDelivery(firstJobId, 10, first.OutputItemId),
+          "acknowledge the durable item delivery");
+    Check(machine.ConfirmDelivery(firstJobId, 10, first.OutputItemId),
+          "duplicate delivery acknowledgements are idempotent");
+    Check(machine.Claim(firstJobId, 10, start.AddSeconds(2)).Reason ==
+          "already_claimed", "confirmed delivery can never be prepared again");
     Check(!machine.Claim(firstJobId, 20, start.AddSeconds(2)).Allowed,
           "other player cannot claim someone else's completed work");
 
@@ -65,8 +76,10 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
         secondJobId, station, 1, 20, recipe.Id, start.AddSeconds(2));
     Check(second.Started && second.OutputItemId != first.OutputItemId,
           "fabrication restarts after previous output delivery");
-    Check(machine.Cancel(secondJobId, 20), "active job can be cancelled");
-    Check(machine.Cancel(secondJobId, 20), "duplicate cancellation harmless");
+    Check(machine.Cancel(secondJobId, 20, start.AddSeconds(2)),
+          "active job can be cancelled");
+    Check(machine.Cancel(secondJobId, 20, start.AddSeconds(2)),
+          "duplicate cancellation harmless");
     Check(!machine.Claim(secondJobId, 20, start.AddSeconds(10)).Allowed,
           "cancelled work never releases an item");
     Check(machine.TryOpen(station, 1, 10, start.AddSeconds(3), lease),
@@ -92,8 +105,10 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
           "craft still finishes with no connected actor");
     Check(machine.TryOpen(station, 1, 9, start.AddSeconds(2), lease),
           "new user can open after disconnected owner's work completes");
-    Check(machine.Claim(task, 8, start.AddSeconds(2)).NewlyClaimed,
-          "original owner retains the reserved output after reconnect");
+    var pending = machine.Claim(task, 8, start.AddSeconds(2));
+    Check(pending.NewlyClaimed, "owner retains output after reconnect");
+    Check(machine.ConfirmDelivery(task, 8, pending.OutputItemId),
+          "returned owner's inventory may acknowledge the delivery");
     Check(!machine.Claim(task, 9, start.AddSeconds(2)).Allowed,
           "other actor never receives reserved result");
 }
@@ -165,15 +180,26 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
               "recovered incomplete work eventually becomes ready");
         Check(recovered.TryOpen(station, 1, 456, start.AddSeconds(2), lease),
               "recovered station reopens once work completes");
-        Check(recovered.Claim(jobId, 123, start.AddSeconds(2)).NewlyClaimed,
-              "pending output remains claimable by original owner");
-        Check(recovered.Claim(jobId, 123, start.AddSeconds(2)).OutputItemId ==
-              started.OutputItemId, "output identity does not change after restart");
+        var claim = recovered.Claim(jobId, 123, start.AddSeconds(2));
+        Check(claim.NewlyClaimed && claim.OutputItemId == started.OutputItemId,
+              "pending output remains claimable with original identity");
 
+        // Simulate crash after preparing an outbox ticket but before
+        // inventory acknowledgement: same stable item ID remains recoverable.
         GameplayStore.SaveFabrication(file, recovered);
         var second = GameplayStore.LoadFabrication(file, recipes);
-        Check(!second.Claim(jobId, 123, start.AddSeconds(3)).NewlyClaimed,
-              "already claimed output cannot be claimed anew after restart");
+        var pending = second.Claim(jobId, 123, start.AddSeconds(3));
+        Check(pending.Allowed && !pending.NewlyClaimed &&
+              pending.Reason == "pending_delivery" &&
+              pending.OutputItemId == started.OutputItemId,
+              "unacknowledged result is recoverable without a new item identity");
+
+        Check(second.ConfirmDelivery(jobId, 123, pending.OutputItemId),
+              "acknowledgement finalizes pending delivery");
+        GameplayStore.SaveFabrication(file, second);
+        var third = GameplayStore.LoadFabrication(file, recipes);
+        Check(third.Claim(jobId, 123, start.AddSeconds(4)).Reason ==
+              "already_claimed", "completed delivery stays final across restarts");
         Check(File.Exists(file + ".bak"), "previous crafting snapshot is backed up");
 
         File.WriteAllText(file, "{}");
@@ -192,7 +218,7 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
 
         var backup = GameplayStore.LoadFabrication(file + ".bak", recipes);
         Check(backup.Claim(jobId, 123, start.AddSeconds(3)).Allowed,
-              "explicit backup can be used for manual recovery");
+              "explicit backup can recover a prepared delivery ticket");
     }
     finally
     {
