@@ -14,8 +14,10 @@ Launcher (Python 3, Linux/Windows)
 
 Plugin (C#, BepInEx 5 + Unity Mono)
   - Unity lifecycle entry point.
-  - Initial transport probe with a non-blocking per-frame UDP receive budget.
-  - Future: world integration, player snapshot rendering, event capture.
+  - Nonblocking UDP receive with a per-frame packet budget.
+  - Optional position capture at 20 Hz via Player.main (in game).
+  - Debug-only remote capsules with the portable movement interpolator.
+  - Future: proper remote prefabs, animation, world replication and events.
   - Unity objects must only be manipulated from Unity's main thread.
 
 Protocol (C#, .NET Standard 2.0)
@@ -23,13 +25,23 @@ Protocol (C#, .NET Standard 2.0)
   - Format v1: ASCII BZC0 (4 bytes), version (1), type (1),
     little-endian uint sequence (4) = 10 bytes.
   - Type 1 = Ping; type 2 = Pong; type 3 = Hello; type 4 = HelloAck.
-  - Unknown versions and packet types rejected.
-  - Pure .NET interpolation buffer accepts monotonic movement snapshots,\n    rejects stale packets, and clamps extrapolation for high RTT.\n  - The buffer is not yet connected to remote Unity player objects.\n  - No compatibility promise while in development.
+  - Type 5 = movement (34 bytes): 10-byte header, uint PeerId, float64
+    sender monotonic timestamp, three float32 world coordinates.
+  - Uploaded movement uses PeerId=0; only the server stamps peer IDs.
+  - Rejects invalid versions, unknown types, bad lengths, nonfinite data,
+    and coordinates outside +/-100,000 units.
+  - Pure .NET interpolation buffer accepts monotonic movement snapshots,
+    rejects stale packets, and clamps extrapolation for high RTT.
+  - The buffer is connected only to a disposable debug capsule, not to
+    real networked characters or gameplay state.
+  - No compatibility promise while in development.
 
 Server (C#, .NET 8)
-  - Development UDP Ping/Pong listener; 127.0.0.1 only by default.
-  - A Hello is required before Ping; endpoint sessions expire after 30s.
-  - No real authentication, authorization, world or gameplay authority yet.
+  - Development UDP probe/movement relay; listens on 127.0.0.1 by default.
+  - Hello required before any Ping or movement; sessions expire after 30s.
+  - At most eight peers, 40 accepted movement samples/second per peer.
+  - Rejects repeated sequence numbers, spoofed peer IDs and implausible speed.
+  - No real authentication, world or gameplay authority yet.
   - Must not be publicly exposed in this state.
 
 ## Security and interoperability tasks before a multiplayer alpha

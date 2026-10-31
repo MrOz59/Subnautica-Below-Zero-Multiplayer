@@ -10,14 +10,18 @@ BOT Benson mod. Original project's restrictive notice is not a license grant.
 - Detection of installed Steam copies, including custom Steam libraries.
 - BepInEx setup checks and safe deployment of our compiled plugin assemblies.
 - Linux via Steam + Proton, with a documented winhttp DLL override.
-- Independent versioned UDP Hello/HelloAck and Ping/Pong protocol.
-- A .NET 8 development server with expiring probe sessions.\n- Portable movement interpolation ready for future player replication.
-- A minimal BepInEx 5 Unity Mono plugin that can ping the test server.
+- Independent versioned UDP control and movement packet formats.
+- A .NET 8 development server with expiring peer sessions, movement
+  validation, server-assigned peer IDs and LAN relay.
+- Portable, jitter-adaptive interpolation with delayed-packet rejection.
+- A BepInEx 5 Unity Mono plugin that can optionally send a local position
+  snapshot at 20 Hz and render other peers as noninteractive debug capsules.
 - Installer rollback, protocol and real UDP integration tests in CI.
 
-NOT implemented: multiplayer entities, world replication, inventory, saves,
-authentication, player spawning, vehicles, authoritative gameplay, discovery,
-automatic BepInEx downloads, Epic launching, or production security.
+NOT implemented: actual player avatars, animation/vehicle/world replication,
+inventory, saves, authentication, real player spawning, authoritative gameplay,
+discovery, automatic BepInEx downloads, Epic launching or production security.
+Remote capsules are temporary debug geometry, not true multiplayer characters.
 
 ## Quick start - Linux (Steam/Proton)
 
@@ -35,6 +39,8 @@ automatic BepInEx downloads, Epic launching, or production security.
    dotnet build src/BelowZeroCoop.Server/BelowZeroCoop.Server.csproj
    python3 launcher/launcher.py start-server
    Then set BepInEx/config/dev.belowzerocoop.plugin.cfg: EnableProbe = true
+   The movement preview is separately disabled by default. See docs/LINUX.md
+   for optional LAN-only development preview instructions.
 
 Linux instructions in docs/LINUX.md.
 

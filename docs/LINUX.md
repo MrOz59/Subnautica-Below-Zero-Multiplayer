@@ -23,17 +23,49 @@ It does not change Steam's launch options. Copy the launch option yourself.
 If Steam is installed as a Flatpak, launching will attempt to use flatpak.
 Use your actual Steam installation/Proton prefix.
 
-## Local development probe
+## Development-only network probe and movement capsules
 
-Start the server: dotnet run --project src/BelowZeroCoop.Server
-It listens only at 127.0.0.1:27021 unless explicitly changed.
-Enable the plugin probe in BepInEx/config/dev.belowzerocoop.plugin.cfg.\nHello/HelloAck now precedes Ping; sessions expire after 30 seconds of inactivity.
-Check BepInEx/LogOutput.log for the connection message.
+Build the development server:
+```sh
+dotnet build src/BelowZeroCoop.Server/BelowZeroCoop.Server.csproj -c Release
+python3 launcher/launcher.py start-server
+```
+By default it binds only to 127.0.0.1:27021 and writes
+`~/.config/belowzerocoop/server.log` on typical Linux desktops.
+
+To connect from another computer on a **trusted private LAN only**:
+```sh
+python3 launcher/launcher.py start-server --bind 0.0.0.0 --port 27021 --allow-lan
+```
+The server has **no authentication**. Do not forward or expose its UDP port
+to the internet. Set an appropriate local firewall rule if necessary.
+
+In the game's `BepInEx/config/dev.belowzerocoop.plugin.cfg`:
+```ini
+[Network]
+EnableProbe = true
+Host = 127.0.0.1
+Port = 27021
+
+[Development]
+EnableMovementPreview = false
+```
+Change `Host` to the LAN server's IP for another machine. Only change
+`EnableMovementPreview` to `true` for an intentional debug session.
+All participating clients need the same protocol version; in-game snapshots
+are then forwarded at up to 20 Hz, with other peers displayed as temporary
+noninteractive capsules. These are not real player models.
+
+Hello/HelloAck precedes Ping; sessions expire after 30 seconds.
+Check `BepInEx/LogOutput.log` for plugin logs.
+
+The launcher never installs BepInEx for you or modifies store authentication.
 
 ## Plugin build reference paths
 
 - BepInExCore: directory containing BepInEx.dll
 - GameManaged: directory containing UnityEngine.CoreModule.dll
+  and Assembly-CSharp.dll
 - The .NET SDK must have access to reference assemblies for net472.
 
 Example:
@@ -49,5 +81,6 @@ mod's private DLLs into this project.
 - Native Linux game binaries are not supported or promised.
 - Epic Games launching has not been implemented.
 - Game/store login remains handled by the original installation.
-- Dedicated server must not be exposed to the internet (no auth or rate limit).
+- Development server must not be exposed to the internet (no authentication).
+- Full in-game compatibility has not been verified against a real game build.
 - Proton launch flags and dependencies depend on the installed version.

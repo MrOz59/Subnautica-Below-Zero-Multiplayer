@@ -12,15 +12,19 @@ first-class runtime, while remaining compatible with Windows.
 - [x] Network protocol + local UDP test server + smoke tests.
 - [x] Versioned Hello/HelloAck and expiring endpoint sessions.
 - [x] UDP integration test against the running server.
-- [x] Transactional plugin install, rollback and idempotency tests.\n- [x] Standalone jitter-adaptive movement buffer and synthetic 300 ms RTT tests.
+- [x] Transactional plugin install, rollback and idempotency tests.
+- [x] Standalone jitter-adaptive movement buffer and synthetic 300 ms RTT tests.
+- [x] Development-only position codec, peer relay, speed cap and basic replay protection.
+- [x] Optional 20 Hz Unity position publisher and remote debug capsules.
+- [x] Explicit LAN opt-in in the launcher, with persisted server logs.
 - [ ] Validate build against the exact installed Below Zero version.
 - [ ] Test on real Linux/Proton and Windows systems.
 
 ## M1 - Local playable prototype
 
 - [ ] Versioned authenticated handshake and connection UI.
-- [ ] Serialize local player snapshots; spawn remote player visuals.
-- [ ] Connect the standalone jitter-adaptive interpolation buffer to remote players and add interest management.
+- [ ] Replace debug capsules with validated real character models and animation.
+- [ ] Add interest management, area-based visibility, and spawn/despawn events.
 - [ ] Host-validated player state, disconnect and reconnect.
 - [ ] LAN two-player swim test (both Windows and Proton).
 - [ ] Simulate high-latency 300 ms network conditions.
