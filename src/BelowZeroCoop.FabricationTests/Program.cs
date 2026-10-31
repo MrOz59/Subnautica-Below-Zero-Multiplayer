@@ -256,4 +256,5 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
 }
 
 MaterialEconomyTests.Run();
+DurableSessionTests.Run();
 Console.WriteLine("Fabricator lifecycle regressions (#3/#76) passed.");
