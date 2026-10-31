@@ -114,3 +114,11 @@ The CI includes regression cases inspired by early upstream reports: concurrent
 joins (#63), duplicate debug avatars (#5), preserving singleplayer when networking
 is disabled (#64), and deterministic packet loss, jitter, duplication and
 reordering (#83). These are new tests, not a port of the original mod.
+
+## Standalone construction topology safeguards (#6, #10, #12, #79, #80)
+
+The new construction graph distinguishes hard structural dependencies from
+removable power connections. It supports safe removal previews, explicit
+atomic cascades, player-occupancy checks, persistent tombstones and a bounded
+topology change feed. These are server-domain regressions, **not live game
+integration**. See [construction safety design](docs/CONSTRUCTION.md).

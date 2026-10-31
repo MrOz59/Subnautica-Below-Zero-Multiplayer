@@ -100,3 +100,12 @@ ingredient credits, refunds for unfinished cancelled/destroyed jobs, atomic
 in-aggregate output item IDs and file-backed persistence-before-ack. See
 [FABRICATION.md](FABRICATION.md). These are still independent-domain tests;
 none of them changes the original mod or the installed Below Zero game.
+
+## Construction topology regression follow-up
+
+The new standalone [construction graph](CONSTRUCTION.md) covers glass dome
+and reactor support (#79), PowerTransmitter connections blocking unrelated
+construction (#80), deletion with stale/null references (#6), occupancy
+protection (#10) and placing a structure on a player (#12). Safe delete plans,
+atomic cascades, versioned tombstones and revisioned connection changes are
+covered by CI. This is not yet connected to the game's live building system.

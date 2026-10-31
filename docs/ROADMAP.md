@@ -80,3 +80,13 @@ first-class runtime, while remaining compatible with Windows.
 
 Each milestone must remain independently testable. Do not claim online
 playability until gameplay replication is implemented and tested.
+
+- [x] Independent construction topology for historical #79/#80: structural
+      dependencies versus detachable PowerTransmitter connections.
+- [x] Safe construction removal previews, global revision checks, occupant
+      guard, explicit atomic cascade, tombstones and persistent snapshots.
+- [x] Bounded atomic topology changes for future late-join replication;
+      stale revisions force a full resnapshot.
+- [ ] Unify construction graph with WorldState, FabricationState and
+      PowerGridState under one durable host-authoritative transaction.
+- [ ] Validate actual game construction geometry and player occupancy hooks.
