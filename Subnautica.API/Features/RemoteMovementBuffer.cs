@@ -12,12 +12,16 @@ namespace Subnautica.API.Features
         private const int MaxSnapshots = 32;
         private const float TeleportDistanceSquared = 100f * 100f;
         private const float MaxExtrapolationSeconds = 0.10f;
+
+        // Dead reckoning must not magnify a short jitter spike into a visual launch.
+        private const float MaxExtrapolationSpeed = 35f;
         private readonly List<Snapshot> snapshots = new List<Snapshot>(MaxSnapshots);
 
         private float offset;
         private float jitter;
         private float bufferSeconds = 0.12f;
         private float lastArrival;
+        private float persistentDelaySeconds;
         private float lastSentTime;
         private uint lastSequence;
         private bool hasSequence;
@@ -49,6 +53,7 @@ namespace Subnautica.API.Features
             jitter = 0f;
             bufferSeconds = 0.12f;
             lastArrival = 0f;
+            persistentDelaySeconds = 0f;
             lastSentTime = 0f;
             lastSequence = 0;
             hasSequence = false;
@@ -95,6 +100,21 @@ namespace Subnautica.API.Features
                 if (sampleOffset < offset)
                 {
                     offset = Mathf.Lerp(offset, sampleOffset, 0.25f);
+                    persistentDelaySeconds = 0f;
+                }
+                else if (sampleOffset > offset + 0.06f)
+                {
+                    // A higher route latency sustained for over a second needs a
+                    // gradually higher baseline; isolated late packets do not.
+                    persistentDelaySeconds += Mathf.Clamp(arrival - lastArrival, 0f, 0.2f);
+                    if (persistentDelaySeconds > 1.5f)
+                    {
+                        offset = Mathf.MoveTowards(offset, sampleOffset, 0.01f);
+                    }
+                }
+                else
+                {
+                    persistentDelaySeconds = 0f;
                 }
 
                 float sendDelta = sentTime - lastSentTime;
@@ -165,8 +185,11 @@ namespace Subnautica.API.Features
 
             float interval = second.Time - first.Time;
             float extrapolation = Mathf.Clamp(renderTime - second.Time, 0f, MaxExtrapolationSeconds);
-            float scale = interval > 0.0001f ? extrapolation / interval : 0f;
-            position = second.Position + (second.Position - first.Position) * scale;
+            Vector3 velocity = interval > 0.0001f
+                ? (second.Position - first.Position) / interval
+                : Vector3.zero;
+            velocity = Vector3.ClampMagnitude(velocity, MaxExtrapolationSpeed);
+            position = second.Position + velocity * extrapolation;
             rotation = second.Rotation;
             return true;
         }
