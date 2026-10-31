@@ -27,7 +27,7 @@ Use your actual Steam installation/Proton prefix.
 
 Start the server: dotnet run --project src/BelowZeroCoop.Server
 It listens only at 127.0.0.1:27021 unless explicitly changed.
-Enable the plugin probe in BepInEx/config/dev.belowzerocoop.plugin.cfg.
+Enable the plugin probe in BepInEx/config/dev.belowzerocoop.plugin.cfg.\nHello/HelloAck now precedes Ping; sessions expire after 30 seconds of inactivity.
 Check BepInEx/LogOutput.log for the connection message.
 
 ## Plugin build reference paths
