@@ -50,7 +50,10 @@ python3 -m unittest discover -s launcher/tests -v
 dotnet run --project src/BelowZeroCoop.SmokeTests
 dotnet build src/BelowZeroCoop.Server -c Release
 
-Plugin compilation is intentionally a separate local build step because
+The CI compiles our plugin *source* against temporary stub APIs. This does not
+prove compatibility with real Unity or BepInEx binaries.
+
+Real plugin compilation is intentionally a separate local build step because
 BepInEx and Unity/game assemblies are not bundled in the repository.
 
 ## Architecture
@@ -60,6 +63,7 @@ BepInEx and Unity/game assemblies are not bundled in the repository.
 - src/BelowZeroCoop.Server/: development server, loopback by default.
 - src/BelowZeroCoop.Plugin/: BepInEx mod entry point.
 - src/BelowZeroCoop.SmokeTests/: packet format and interpolation tests.
+- src/BelowZeroCoop.Plugin.CompileCheck/: CI-only fake game API to syntax-check our plugin; never ship it.
 - docs/: Linux details, planned milestones and third-party dependencies.
 
 Use this branch for all new development. No game or BOT Benson code is copied.
