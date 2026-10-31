@@ -70,7 +70,8 @@ internal static class GameplayStore
     public static ConstructionState LoadConstruction(string path)
     {
         ConstructionDocument document = Read<ConstructionDocument>(
-            path, "Version", "Revision", "Nodes", "Links", "Receipts");
+            path, "Version", "Revision", "Nodes", "Links", "Receipts",
+            "Changes");
         return ConstructionState.Restore(document);
     }
 
@@ -180,6 +181,8 @@ internal static class GameplayStore
                     ValidateEntries(json.RootElement, "Receipts",
                         "OperationId", "Signature", "Revision",
                         "RemovedCount", "DetachedCount");
+                    ValidateEntries(json.RootElement, "Changes",
+                        "Revision", "Nodes", "Added", "Removed");
                 }
             }
 

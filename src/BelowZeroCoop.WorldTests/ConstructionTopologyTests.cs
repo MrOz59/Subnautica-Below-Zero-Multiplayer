@@ -65,6 +65,14 @@ internal static class ConstructionTopologyTests
         var removed = world.Remove(operationId, revision, room, 1, false, NoPlayers);
         Check(removed.Applied && removed.RemovedCount == 1 &&
               removed.DetachedCount == 1, "remove room and detach only its power edge");
+        Check(world.TryChangesSince(revision, out List<ConstructionChange> changes) &&
+              changes.Count == 1 &&
+              changes[0].Nodes.Single().Deleted &&
+              changes[0].Removed.Single().Kind == ConstructionLinkKind.Power,
+              "one atomic delta contains both tombstone and detached power link");
+        changes[0].Nodes[0].Deleted = false;
+        Check(world.Snapshot().Nodes.Single(x => x.Id == room).Deleted,
+              "client cannot mutate server state through detached delta");
         Check(world.Snapshot().Links.Count == 1,
               "transmitter-to-solar wiring remains intact");
         Check(world.Snapshot().Nodes.Single(x => x.Id == transmitter).Deleted == false,
@@ -163,6 +171,10 @@ internal static class ConstructionTopologyTests
             room, 1, true, NoPlayers);
         Check(committed.Applied && committed.RemovedCount == 3 &&
               committed.DetachedCount == 2, "explicit cascade atomically removes subtree");
+        Check(world.TryChangesSince(revision, out List<ConstructionChange> changes) &&
+              changes.Count == 1 && changes[0].Nodes.Count == 3 &&
+              changes[0].Removed.Count == 2,
+              "cascade publishes one indivisible revision with all tombstones");
         Check(world.Snapshot().Nodes.All(x => x.Deleted) &&
               world.Snapshot().Links.Count == 0,
               "no half-removed structure or orphan links");
@@ -190,6 +202,10 @@ internal static class ConstructionTopologyTests
         {
             GameplayStore.SaveConstruction(path, world);
             var recovered = GameplayStore.LoadConstruction(path);
+            Check(recovered.TryChangesSince(recovered.Snapshot().Revision - 1,
+                out List<ConstructionChange> tail) && tail.Count == 1 &&
+                tail[0].Nodes.Single().Deleted,
+                "tombstone delta survives restart");
             Check(!recovered.Place(Guid.NewGuid(), recovered.Snapshot().Revision,
                 id, 1, "PowerTransmitter", position, NoPlayers).Applied,
                 "old generation cannot revive after restart");
@@ -290,8 +306,18 @@ internal static class ConstructionTopologyTests
             "nonfinite geometry rejected before world mutation");
 
         long r = world.Snapshot().Revision;
+        Check(!world.Remove(Guid.Empty, r, room, 1, true, NoPlayers).Applied,
+            "missing operation ID cannot mutate world");
         Check(!world.Remove(Guid.NewGuid(), r, room, 1, false,
             new[] { new ConstructionBounds(0, 0, 0, double.PositiveInfinity, 1, 1) }).Applied,
             "malformed authoritative occupancy cannot bypass checks");
+
+        var invalidChange = world.Snapshot();
+        invalidChange.Changes[0].Nodes[0].Volume = new ConstructionBounds(
+            0, 0, 0, double.NaN, 1, 1);
+        refused = false;
+        try { ConstructionState.Restore(invalidChange); }
+        catch (InvalidDataException) { refused = true; }
+        Check(refused, "corrupted history coordinates rejected");
     }
 }
