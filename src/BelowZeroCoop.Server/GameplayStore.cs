@@ -55,7 +55,8 @@ internal static class GameplayStore
         string path, IEnumerable<FabricationRecipe> trustedRecipes)
     {
         FabricationDocument document = Read<FabricationDocument>(
-            path, "Version", "Revision", "Stations", "Jobs");
+            path, "Version", "Revision", "Stations", "Jobs",
+            "Inventories", "Grants");
         return FabricationState.Restore(document, trustedRecipes);
     }
 
@@ -148,7 +149,12 @@ internal static class GameplayStore
                     ValidateEntries(json.RootElement, "Jobs",
                         "Id", "StationId", "StationGeneration", "OwnerId",
                         "RecipeId", "OutputType", "OutputItemId",
-                        "StartedUtc", "ReadyUtc", "Status");
+                        "StartedUtc", "ReadyUtc", "Status",
+                        "ReservedIngredients");
+                    ValidateEntries(json.RootElement, "Inventories",
+                        "ActorId", "Materials", "OwnedItems");
+                    ValidateEntries(json.RootElement, "Grants",
+                        "OperationId", "ActorId", "Material", "Quantity");
                 }
             }
 

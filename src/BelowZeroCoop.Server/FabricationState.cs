@@ -7,17 +7,27 @@ namespace BelowZeroCoop.Server;
 /// </summary>
 internal sealed class FabricationState
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
     public const int MaxStations = 512;
     public const int MaxJobs = 4096;
     private static readonly TimeSpan MaxLease = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan MaxCraftTime = TimeSpan.FromMinutes(2);
+    private const int MaxPlayers = 16;
+    private const int MaxMaterialKinds = 128;
+    private const int MaxOwnedItems = 128;
+    private const int MaxMaterialPerKind = 100000;
+    private const int MaxGrants = 4096;
 
     private readonly object gate = new();
     private readonly Dictionary<Guid, FabricationStation> stations = new();
     private readonly Dictionary<Guid, FabricationJob> jobs = new();
     private readonly Dictionary<Guid, FabricationLease> leases = new();
     private readonly Dictionary<string, FabricationRecipe> recipes;
+    // Part of the SAME aggregate/snapshot as the jobs: resource deductions
+    // and output grants cannot be split across independent save files.
+    private readonly Dictionary<uint, FabricationInventory> inventories = new();
+    // Do not evict grants: evicting operation IDs would make stale replays pay again.
+    private readonly Dictionary<Guid, FabricationGrantReceipt> grants = new();
     private long revision;
 
     public FabricationState(IEnumerable<FabricationRecipe> trustedRecipes)
@@ -30,7 +40,14 @@ internal sealed class FabricationState
         {
             if (recipe == null || !KeyValid(recipe.Id) || !KeyValid(recipe.OutputType) ||
                 recipe.Duration <= TimeSpan.Zero || recipe.Duration > MaxCraftTime ||
-                !recipes.TryAdd(recipe.Id, recipe))
+                recipe.Ingredients == null || recipe.Ingredients.Count > 32 ||
+                recipe.Ingredients.Any(entry => !KeyValid(entry.Key) ||
+                    entry.Value <= 0 || entry.Value > MaxMaterialPerKind) ||
+                !recipes.TryAdd(recipe.Id, recipe with
+                {
+                    Ingredients = new Dictionary<string, int>(
+                        recipe.Ingredients, StringComparer.Ordinal)
+                }))
                 throw new ArgumentException("Invalid or duplicated trusted recipe.");
         }
     }
@@ -85,6 +102,7 @@ internal sealed class FabricationState
                 if (job.StationId == stationId && job.StationGeneration == generation &&
                     job.Status == FabricationStatus.Running)
                 {
+                    RefundIngredients(job);
                     job.Status = FabricationStatus.Cancelled;
                     revision++;
                 }
@@ -165,6 +183,24 @@ internal sealed class FabricationState
             if (jobs.Count >= MaxJobs)
                 return FabricationBeginResult.Reject("job_capacity");
 
+            if (recipe.Ingredients.Count != 0)
+            {
+                if (!inventories.TryGetValue(verifiedActor, out FabricationInventory? stock) ||
+                    recipe.Ingredients.Any(entry =>
+                        !stock.Materials.TryGetValue(entry.Key, out int available) ||
+                        available < entry.Value))
+                    return FabricationBeginResult.Reject("missing_materials");
+
+                foreach (var entry in recipe.Ingredients)
+                {
+                    int remaining = stock.Materials[entry.Key] - entry.Value;
+                    if (remaining == 0)
+                        stock.Materials.Remove(entry.Key);
+                    else
+                        stock.Materials[entry.Key] = remaining;
+                }
+            }
+
             FabricationJob job = new()
             {
                 Id = jobId,
@@ -174,6 +210,8 @@ internal sealed class FabricationState
                 RecipeId = recipe.Id,
                 OutputType = recipe.OutputType,
                 OutputItemId = Guid.NewGuid(),
+                ReservedIngredients = new Dictionary<string, int>(
+                    recipe.Ingredients, StringComparer.Ordinal),
                 StartedUtc = utcNow,
                 ReadyUtc = utcNow + recipe.Duration,
                 Status = FabricationStatus.Running
@@ -261,9 +299,143 @@ internal sealed class FabricationState
             if (job.Status != FabricationStatus.Running)
                 return false;
 
+            RefundIngredients(job);
             job.Status = FabricationStatus.Cancelled;
             revision++;
             return true;
+        }
+    }
+
+    /// <summary>
+    /// Trusted server/bootstrap-only material provision. Operation IDs are
+    /// retained in the snapshot, not evicted, to prevent replay-based credits.
+    /// Not exposed on the unauthenticated development UDP listener.
+    /// </summary>
+    public bool GrantMaterials(Guid operationId, uint verifiedActor,
+                               string material, int quantity)
+    {
+        lock (gate)
+        {
+            if (operationId == Guid.Empty || verifiedActor == 0 ||
+                !KeyValid(material) || quantity <= 0 ||
+                quantity > MaxMaterialPerKind)
+                return false;
+
+            if (grants.TryGetValue(operationId, out FabricationGrantReceipt? previous))
+                return previous.ActorId == verifiedActor &&
+                       previous.Material == material && previous.Quantity == quantity;
+            if (grants.Count >= MaxGrants)
+                return false;
+
+            if (!inventories.TryGetValue(verifiedActor, out FabricationInventory? stock))
+            {
+                if (inventories.Count >= MaxPlayers)
+                    return false;
+                stock = new FabricationInventory { ActorId = verifiedActor };
+            }
+
+            int old = stock.Materials.TryGetValue(material, out int count) ? count : 0;
+            if (old > MaxMaterialPerKind - quantity ||
+                (old == 0 && stock.Materials.Count >= MaxMaterialKinds))
+                return false;
+
+            // Outstanding reservations are still owned by this player.
+            // Bound future refunds so cancellation cannot overflow inventory.
+            int reserved = jobs.Values.Where(job =>
+                job.OwnerId == verifiedActor && job.Status == FabricationStatus.Running)
+                .Sum(job => job.ReservedIngredients.TryGetValue(material,
+                    out int amount) ? (long)amount : 0L) is long sum
+                    ? (int)Math.Min(sum, (long)MaxMaterialPerKind + 1) : 0;
+            if ((long)old + quantity + reserved > MaxMaterialPerKind)
+                return false;
+
+            stock.Materials[material] = old + quantity;
+            inventories[verifiedActor] = stock;
+            grants.Add(operationId, new FabricationGrantReceipt(
+                operationId, verifiedActor, material, quantity));
+            revision++;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Atomically finalizes a prepared job and adds the stable output UUID
+    /// into the same authoritative aggregate. Never split into two saves.
+    /// </summary>
+    public FabricationDeliveryResult DeliverToInventory(
+        Guid jobId, uint verifiedActor, DateTime utcNow)
+    {
+        lock (gate)
+        {
+            if (!Utc(utcNow) || verifiedActor == 0 ||
+                !jobs.TryGetValue(jobId, out FabricationJob? job) ||
+                job.OwnerId != verifiedActor)
+                return FabricationDeliveryResult.Reject("job_not_found");
+
+            AdvanceInternal(utcNow);
+            if (job.Status is not (FabricationStatus.Ready or
+                                   FabricationStatus.Delivering or
+                                   FabricationStatus.Claimed))
+                return FabricationDeliveryResult.Reject("not_ready");
+
+            if (!inventories.TryGetValue(verifiedActor, out FabricationInventory? stock))
+            {
+                if (inventories.Count >= MaxPlayers)
+                    return FabricationDeliveryResult.Reject("player_capacity");
+                stock = new FabricationInventory { ActorId = verifiedActor };
+            }
+
+            if (stock.OwnedItems.TryGetValue(job.OutputItemId, out string? existing))
+            {
+                if (existing != job.OutputType)
+                    return FabricationDeliveryResult.Reject("item_conflict");
+                if (job.Status != FabricationStatus.Claimed)
+                {
+                    job.Status = FabricationStatus.Claimed;
+                    revision++;
+                }
+                return new FabricationDeliveryResult(true, true, "duplicate",
+                    job.OutputItemId, job.OutputType);
+            }
+
+            if (job.Status == FabricationStatus.Claimed)
+                return FabricationDeliveryResult.Reject("external_delivery");
+            if (stock.OwnedItems.Count >= MaxOwnedItems)
+                return FabricationDeliveryResult.Reject("inventory_full");
+
+            // One output UUID may exist at most once across all players.
+            if (inventories.Values.Any(x => x.OwnedItems.ContainsKey(job.OutputItemId)))
+                return FabricationDeliveryResult.Reject("item_conflict");
+
+            stock.OwnedItems.Add(job.OutputItemId, job.OutputType);
+            inventories[verifiedActor] = stock;
+            job.Status = FabricationStatus.Claimed;
+            revision++;
+            return new FabricationDeliveryResult(true, false, "delivered",
+                job.OutputItemId, job.OutputType);
+        }
+    }
+
+    public FabricationInventory? SnapshotInventory(uint actorId)
+    {
+        lock (gate)
+            return inventories.TryGetValue(actorId, out FabricationInventory? stock)
+                ? stock.Copy() : null;
+    }
+
+    private void RefundIngredients(FabricationJob job)
+    {
+        if (job.ReservedIngredients.Count == 0)
+            return;
+
+        FabricationInventory stock = inventories[job.OwnerId];
+        foreach (var entry in job.ReservedIngredients)
+        {
+            int current = stock.Materials.TryGetValue(entry.Key,
+                out int count) ? count : 0;
+            // GrantMaterials enforces outstanding reservations when adding
+            // externally provided stock, so refund cannot exceed its bounds.
+            stock.Materials[entry.Key] = checked(current + entry.Value);
         }
     }
 
@@ -302,7 +474,10 @@ internal sealed class FabricationState
                 Version = SchemaVersion,
                 Revision = revision,
                 Stations = stations.Values.OrderBy(x => x.Id).Select(x => x.Copy()).ToList(),
-                Jobs = jobs.Values.OrderBy(x => x.Id).Select(x => x.Copy()).ToList()
+                Jobs = jobs.Values.OrderBy(x => x.Id).Select(x => x.Copy()).ToList(),
+                Inventories = inventories.Values.OrderBy(x => x.ActorId)
+                    .Select(x => x.Copy()).ToList(),
+                Grants = grants.Values.OrderBy(x => x.OperationId).ToList()
             };
         }
     }
@@ -313,7 +488,9 @@ internal sealed class FabricationState
         if (document == null || document.Version != SchemaVersion ||
             document.Revision < 0 || document.Stations == null ||
             document.Jobs == null || document.Stations.Count > MaxStations ||
-            document.Jobs.Count > MaxJobs)
+            document.Jobs.Count > MaxJobs ||
+            document.Inventories == null || document.Inventories.Count > MaxPlayers ||
+            document.Grants == null || document.Grants.Count > MaxGrants)
             throw new InvalidDataException("Invalid fabrication snapshot schema.");
 
         FabricationState restored = new(trustedRecipes) { revision = document.Revision };
@@ -322,6 +499,29 @@ internal sealed class FabricationState
             if (station == null || station.Id == Guid.Empty ||
                 station.Generation < 1 || !restored.stations.TryAdd(station.Id, station.Copy()))
                 throw new InvalidDataException("Invalid or repeated fabrication station.");
+        }
+
+        foreach (FabricationInventory inventory in document.Inventories)
+        {
+            if (inventory == null || inventory.ActorId == 0 ||
+                inventory.Materials == null || inventory.OwnedItems == null ||
+                inventory.Materials.Count > MaxMaterialKinds ||
+                inventory.OwnedItems.Count > MaxOwnedItems ||
+                inventory.Materials.Any(x => !KeyValid(x.Key) ||
+                    x.Value < 1 || x.Value > MaxMaterialPerKind) ||
+                inventory.OwnedItems.Any(x => x.Key == Guid.Empty ||
+                    !KeyValid(x.Value)) ||
+                !restored.inventories.TryAdd(inventory.ActorId, inventory.Copy()))
+                throw new InvalidDataException("Invalid fabrication inventory.");
+        }
+
+        foreach (FabricationGrantReceipt receipt in document.Grants)
+        {
+            if (receipt == null || receipt.OperationId == Guid.Empty ||
+                receipt.ActorId == 0 || !KeyValid(receipt.Material) ||
+                receipt.Quantity <= 0 || receipt.Quantity > MaxMaterialPerKind ||
+                !restored.grants.TryAdd(receipt.OperationId, receipt))
+                throw new InvalidDataException("Invalid or duplicated material credit receipt.");
         }
 
         HashSet<Guid> outputs = new();
@@ -337,6 +537,8 @@ internal sealed class FabricationState
                 !restored.recipes.TryGetValue(job.RecipeId ?? "",
                                               out FabricationRecipe? recipe) ||
                 recipe.OutputType != job.OutputType ||
+                job.ReservedIngredients == null ||
+                !SameIngredients(recipe.Ingredients, job.ReservedIngredients) ||
                 !Enum.IsDefined(typeof(FabricationStatus), job.Status) ||
                 !Utc(job.StartedUtc) || !Utc(job.ReadyUtc) ||
                 job.ReadyUtc - job.StartedUtc != recipe.Duration ||
@@ -348,9 +550,57 @@ internal sealed class FabricationState
                 throw new InvalidDataException("Invalid, duplicate or conflicting craft job.");
         }
 
+        // Inventory item IDs must match actual claimed jobs exactly, and a
+        // single item UUID cannot be credited to two players after recovery.
+        HashSet<Guid> itemIds = new();
+        foreach (FabricationInventory stock in restored.inventories.Values)
+        {
+            foreach (var item in stock.OwnedItems)
+            {
+                if (!itemIds.Add(item.Key) ||
+                    !restored.jobs.Values.Any(job =>
+                        job.OwnerId == stock.ActorId &&
+                        job.OutputItemId == item.Key &&
+                        job.OutputType == item.Value &&
+                        job.Status == FabricationStatus.Claimed))
+                    throw new InvalidDataException("Fabricated item has no matching claimed job.");
+            }
+        }
+
+        foreach (FabricationJob job in restored.jobs.Values)
+        {
+            if (job.Status != FabricationStatus.Running)
+                continue;
+            if (!restored.inventories.TryGetValue(job.OwnerId,
+                    out FabricationInventory? stock))
+            {
+                if (job.ReservedIngredients.Count != 0)
+                    throw new InvalidDataException("Missing inventory for reserved materials.");
+                continue;
+            }
+            foreach (var material in job.ReservedIngredients)
+            {
+                int owned = stock.Materials.TryGetValue(material.Key,
+                    out int count) ? count : 0;
+                long total = (long)owned + restored.jobs.Values
+                    .Where(x => x.OwnerId == job.OwnerId &&
+                        x.Status == FabricationStatus.Running)
+                    .Sum(x => x.ReservedIngredients.TryGetValue(material.Key,
+                        out int n) ? (long)n : 0L);
+                if (total > MaxMaterialPerKind)
+                    throw new InvalidDataException("Reserved material exceeds inventory capacity.");
+            }
+        }
+
         // All ephemeral UI interaction leases are intentionally discarded.
         return restored;
     }
+
+    private static bool SameIngredients(
+        IReadOnlyDictionary<string, int> expected, Dictionary<string, int> actual)
+        => actual.Count == expected.Count &&
+           actual.All(x => expected.TryGetValue(x.Key, out int qty) &&
+                           qty == x.Value);
 
     private bool StationActive(Guid stationId, int generation)
         => stations.TryGetValue(stationId, out FabricationStation? station) &&
@@ -395,7 +645,12 @@ internal sealed class FabricationState
 }
 
 internal sealed record FabricationRecipe(string Id, string OutputType,
-                                         TimeSpan Duration);
+                                         TimeSpan Duration,
+    IReadOnlyDictionary<string, int>? Ingredients = null)
+{
+    public IReadOnlyDictionary<string, int> Ingredients { get; init; } =
+        Ingredients ?? new Dictionary<string, int>(StringComparer.Ordinal);
+}
 
 internal enum FabricationStatus
 {
@@ -430,13 +685,17 @@ internal sealed class FabricationJob
     public DateTime StartedUtc { get; set; }
     public DateTime ReadyUtc { get; set; }
     public FabricationStatus Status { get; set; }
+    public Dictionary<string, int> ReservedIngredients { get; set; } =
+        new(StringComparer.Ordinal);
 
     public FabricationJob Copy() => new()
     {
         Id = Id, StationId = StationId, StationGeneration = StationGeneration,
         OwnerId = OwnerId, RecipeId = RecipeId, OutputType = OutputType,
         OutputItemId = OutputItemId, StartedUtc = StartedUtc,
-        ReadyUtc = ReadyUtc, Status = Status
+        ReadyUtc = ReadyUtc, Status = Status,
+        ReservedIngredients = new Dictionary<string, int>(
+            ReservedIngredients, StringComparer.Ordinal)
     };
 }
 
@@ -446,6 +705,8 @@ internal sealed class FabricationDocument
     public long Revision { get; set; }
     public List<FabricationStation> Stations { get; set; } = new();
     public List<FabricationJob> Jobs { get; set; } = new();
+    public List<FabricationInventory> Inventories { get; set; } = new();
+    public List<FabricationGrantReceipt> Grants { get; set; } = new();
 }
 
 internal sealed record FabricationBeginResult(bool Started, bool Duplicate,
@@ -460,4 +721,29 @@ internal sealed record FabricationClaimResult(bool Allowed, bool NewlyClaimed,
 {
     public static FabricationClaimResult Reject(string reason)
         => new(false, false, reason, Guid.Empty, "");
+}
+
+internal sealed class FabricationInventory
+{
+    public uint ActorId { get; set; }
+    public Dictionary<string, int> Materials { get; set; } =
+        new(StringComparer.Ordinal);
+    public Dictionary<Guid, string> OwnedItems { get; set; } = new();
+
+    public FabricationInventory Copy() => new()
+    {
+        ActorId = ActorId,
+        Materials = new Dictionary<string, int>(Materials, StringComparer.Ordinal),
+        OwnedItems = new Dictionary<Guid, string>(OwnedItems)
+    };
+}
+
+internal sealed record FabricationGrantReceipt(
+    Guid OperationId, uint ActorId, string Material, int Quantity);
+
+internal sealed record FabricationDeliveryResult(
+    bool Delivered, bool Duplicate, string Reason, Guid OutputItemId, string OutputType)
+{
+    internal static FabricationDeliveryResult Reject(string reason) =>
+        new(false, false, reason, Guid.Empty, "");
 }

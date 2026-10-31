@@ -255,4 +255,5 @@ TimeSpan lease = TimeSpan.FromSeconds(5);
     Check(recipeRejected, "duplicate trusted recipe definitions rejected");
 }
 
+MaterialEconomyTests.Run();
 Console.WriteLine("Fabricator lifecycle regressions (#3/#76) passed.");
