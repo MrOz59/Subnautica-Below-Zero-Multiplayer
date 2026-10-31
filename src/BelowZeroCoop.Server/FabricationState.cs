@@ -341,11 +341,10 @@ internal sealed class FabricationState
 
             // Outstanding reservations are still owned by this player.
             // Bound future refunds so cancellation cannot overflow inventory.
-            int reserved = jobs.Values.Where(job =>
+            long reserved = jobs.Values.Where(job =>
                 job.OwnerId == verifiedActor && job.Status == FabricationStatus.Running)
                 .Sum(job => job.ReservedIngredients.TryGetValue(material,
-                    out int amount) ? (long)amount : 0L) is long sum
-                    ? (int)Math.Min(sum, (long)MaxMaterialPerKind + 1) : 0;
+                    out int amount) ? (long)amount : 0L);
             if ((long)old + quantity + reserved > MaxMaterialPerKind)
                 return false;
 
@@ -644,12 +643,21 @@ internal sealed class FabricationState
     private sealed record FabricationLease(uint ActorId, DateTime ExpiresUtc);
 }
 
-internal sealed record FabricationRecipe(string Id, string OutputType,
-                                         TimeSpan Duration,
-    IReadOnlyDictionary<string, int>? Ingredients = null)
+internal sealed record FabricationRecipe
 {
-    public IReadOnlyDictionary<string, int> Ingredients { get; init; } =
-        Ingredients ?? new Dictionary<string, int>(StringComparer.Ordinal);
+    public string Id { get; init; }
+    public string OutputType { get; init; }
+    public TimeSpan Duration { get; init; }
+    public IReadOnlyDictionary<string, int> Ingredients { get; init; }
+
+    public FabricationRecipe(string id, string outputType, TimeSpan duration,
+                             IReadOnlyDictionary<string, int>? ingredients = null)
+    {
+        Id = id;
+        OutputType = outputType;
+        Duration = duration;
+        Ingredients = ingredients ?? new Dictionary<string, int>(StringComparer.Ordinal);
+    }
 }
 
 internal enum FabricationStatus
