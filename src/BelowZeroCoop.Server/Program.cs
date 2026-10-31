@@ -11,8 +11,6 @@ namespace BelowZeroCoop.Server;
 internal static class Program
 {
     private const int DefaultPort = 27021;
-    private const int MaxSessions = 32;
-    private static readonly TimeSpan SessionTimeout = TimeSpan.FromSeconds(30);
 
     public static async Task<int> Main(string[] args)
     {
@@ -54,10 +52,11 @@ internal static class Program
         };
 
         using var server = new UdpClient(new IPEndPoint(bindAddress, port));
-        var sessions = new Dictionary<IPEndPoint, DateTime>();
+        var sessions = new PeerRegistry();
         Console.WriteLine("BelowZeroCoop development server at " + bindAddress + ":" + port);
         Console.WriteLine("Protocol v" + PacketCodec.WireVersion + ". CTRL+C to stop.");
-        Console.WriteLine("Development probe only: no player data and no authentication.");
+        Console.WriteLine("LAN-only prototype: versioned probes and relay of debug position snapshots.");
+        Console.WriteLine("No authentication or actual co-op gameplay yet.");
         if (!IPAddress.IsLoopback(bindAddress))
             Console.WriteLine("WARNING: untrusted network exposure is NOT supported.");
 
@@ -78,47 +77,71 @@ internal static class Program
                 continue;
             }
 
-            if (!PacketCodec.TryDecode(message.Buffer, out Packet packet))
-                continue;
-
             DateTime now = DateTime.UtcNow;
-            Packet? reply = null;
 
-            if (packet.Type == PacketType.Hello)
+            // Protocol probes are exactly ten bytes. Keep the movement codec
+            // independent so future state packets can use their own layouts.
+            if (PacketCodec.TryDecode(message.Buffer, out Packet packet))
             {
-                foreach (var old in sessions.Where(x => now - x.Value > SessionTimeout)
-                                            .Select(x => x.Key).ToArray())
-                    sessions.Remove(old);
-
-                if (sessions.Count < MaxSessions || sessions.ContainsKey(message.RemoteEndPoint))
+                Packet? reply = null;
+                if (packet.Type == PacketType.Hello &&
+                    sessions.TryHello(message.RemoteEndPoint, now, out _))
                 {
-                    sessions[message.RemoteEndPoint] = now;
                     reply = new Packet(PacketType.HelloAck, packet.Sequence);
                 }
-            }
-            else if (packet.Type == PacketType.Ping &&
-                     sessions.TryGetValue(message.RemoteEndPoint, out DateTime lastSeen) &&
-                     now - lastSeen <= SessionTimeout)
-            {
-                sessions[message.RemoteEndPoint] = now;
-                reply = new Packet(PacketType.Pong, packet.Sequence);
+                else if (packet.Type == PacketType.Ping &&
+                         sessions.TryGet(message.RemoteEndPoint, now, out _))
+                {
+                    reply = new Packet(PacketType.Pong, packet.Sequence);
+                }
+
+                if (reply.HasValue)
+                {
+                    try
+                    {
+                        byte[] response = PacketCodec.Encode(reply.Value);
+                        await server.SendAsync(response, message.RemoteEndPoint, shutdown.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (SocketException ex)
+                    {
+                        Console.Error.WriteLine("UDP send error: " + ex.SocketErrorCode);
+                    }
+                }
+
+                continue;
             }
 
-            if (!reply.HasValue)
+            if (!MovementWireCodec.TryDecode(message.Buffer, out MovementDatagram movement) ||
+                !sessions.TryAcceptMovement(message.RemoteEndPoint, movement, now, out Peer sender))
                 continue;
 
-            try
+            // A client never chooses its own public peer ID. The server stamps
+            // the assigned ID and fans out only to other registered endpoints.
+            byte[] relay = MovementWireCodec.Encode(new MovementDatagram(
+                movement.Sequence, sender.Id, movement.SentAt,
+                movement.X, movement.Y, movement.Z));
+
+            foreach (Peer recipient in sessions.Members)
             {
-                byte[] response = PacketCodec.Encode(reply.Value);
-                await server.SendAsync(response, message.RemoteEndPoint, shutdown.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (SocketException ex)
-            {
-                Console.Error.WriteLine("UDP send error: " + ex.SocketErrorCode);
+                if (recipient.Id == sender.Id)
+                    continue;
+
+                try
+                {
+                    await server.SendAsync(relay, recipient.Endpoint, shutdown.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return 0;
+                }
+                catch (SocketException ex)
+                {
+                    Console.Error.WriteLine("UDP relay error: " + ex.SocketErrorCode);
+                }
             }
         }
 
