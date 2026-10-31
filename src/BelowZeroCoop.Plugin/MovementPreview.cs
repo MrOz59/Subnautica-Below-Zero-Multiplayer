@@ -12,7 +12,9 @@ namespace BelowZeroCoop.Plugin
     /// </summary>
     internal sealed class MovementPreview
     {
-        private const float SendInterval = 0.05f; // 20 Hz
+        private const float SendInterval = 0.05f; // 20 Hz while moving
+        private const float StationaryHeartbeat = 1f;
+        private const float MovementDeadzoneSquared = 0.0025f;
         private const float PeerExpiry = 10f;
         private const int MaxVisualPeers = 8;
 
@@ -28,6 +30,9 @@ namespace BelowZeroCoop.Plugin
 
         private uint sequence;
         private float nextSendAt;
+        private float lastSentAt;
+        private Vector3 lastPosition;
+        private bool hasLastPosition;
 
         internal void Reset()
         {
@@ -41,6 +46,7 @@ namespace BelowZeroCoop.Plugin
             // Keep our outgoing sequence monotonic across network reconnects.
             // The same server-side endpoint may still have recent snapshots.
             nextSendAt = 0f;
+            hasLastPosition = false;
         }
 
         internal void OnPosition(MovementDatagram packet, float receivedAt)
@@ -78,7 +84,7 @@ namespace BelowZeroCoop.Plugin
             remotePeers.Remove(peerId);
         }
 
-        internal void Tick(float now, Action<MovementDatagram> transmit)
+        internal void Tick(float now, Func<MovementDatagram, bool> transmit)
         {
             var player = global::Player.main;
             if (player == null)
@@ -92,12 +98,30 @@ namespace BelowZeroCoop.Plugin
             {
                 nextSendAt = now + SendInterval;
                 Vector3 position = player.transform.position;
-                sequence++;
-                if (sequence == 0)
-                    sequence++;
+                float dx = hasLastPosition ? position.x - lastPosition.x : 0f;
+                float dy = hasLastPosition ? position.y - lastPosition.y : 0f;
+                float dz = hasLastPosition ? position.z - lastPosition.z : 0f;
+                bool moved = !hasLastPosition ||
+                             dx * dx + dy * dy + dz * dz > MovementDeadzoneSquared;
+                bool heartbeat = !hasLastPosition || now - lastSentAt >= StationaryHeartbeat;
 
-                transmit(new MovementDatagram(sequence, 0, now,
-                                              position.x, position.y, position.z));
+                if (moved || heartbeat)
+                {
+                    sequence++;
+                    if (sequence == 0)
+                        sequence++;
+
+                    // A failed send must be retried on a later tick instead
+                    // of silently updating the last-sent baseline.
+                    bool accepted = transmit(new MovementDatagram(sequence, 0, now,
+                                                   position.x, position.y, position.z));
+                    if (accepted)
+                    {
+                        lastPosition = position;
+                        lastSentAt = now;
+                        hasLastPosition = true;
+                    }
+                }
             }
 
             List<uint> expired = null;

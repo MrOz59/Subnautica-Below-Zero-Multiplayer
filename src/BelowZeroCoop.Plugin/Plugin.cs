@@ -153,21 +153,28 @@ namespace BelowZeroCoop.Plugin
             }
         }
 
-        private void SendMovement(MovementDatagram movement)
+        private bool SendMovement(MovementDatagram movement)
         {
             if (socket == null || !handshakeComplete)
-                return;
+                return false;
 
             try
             {
                 byte[] bytes = MovementWireCodec.Encode(movement);
                 socket.Send(bytes, bytes.Length);
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                Logger.LogWarning("Movement preview skipped invalid local coordinates.");
+                return false;
             }
             catch (SocketException ex)
             {
                 Logger.LogWarning("Movement preview send error: " + ex.SocketErrorCode);
                 CloseSocket();
                 nextInitAttemptAt = Time.realtimeSinceStartup + 5f;
+                return false;
             }
         }
 
