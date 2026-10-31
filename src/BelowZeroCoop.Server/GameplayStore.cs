@@ -44,6 +44,21 @@ internal static class GameplayStore
         return PowerGridState.Restore(document);
     }
 
+    public static void SaveFabrication(string path, FabricationState state)
+    {
+        if (state == null)
+            throw new ArgumentNullException(nameof(state));
+        Write(path, state.Snapshot());
+    }
+
+    public static FabricationState LoadFabrication(
+        string path, IEnumerable<FabricationRecipe> trustedRecipes)
+    {
+        FabricationDocument document = Read<FabricationDocument>(
+            path, "Version", "Revision", "Stations", "Jobs");
+        return FabricationState.Restore(document, trustedRecipes);
+    }
+
     private static void Write<T>(string path, T document)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -125,6 +140,16 @@ internal static class GameplayStore
                     ValidateEntries(json.RootElement, "Devices",
                         "Id", "Generation", "Role",
                         "RateMilliUnitsPerSecond", "Deleted");
+
+                if (typeof(T) == typeof(FabricationDocument))
+                {
+                    ValidateEntries(json.RootElement, "Stations",
+                        "Id", "Generation", "Deleted");
+                    ValidateEntries(json.RootElement, "Jobs",
+                        "Id", "StationId", "StationGeneration", "OwnerId",
+                        "RecipeId", "OutputType", "OutputItemId",
+                        "StartedUtc", "ReadyUtc", "Status");
+                }
             }
 
             stream.Position = 0;
