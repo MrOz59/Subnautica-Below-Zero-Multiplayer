@@ -4,7 +4,7 @@ namespace BelowZeroCoop.Server;
 
 internal sealed class IntegratedWorldSession : IDisposable
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
     private const int MaxBytes = 12 * 1024 * 1024;
     // Service-only actor for standalone world mirroring. Never accepted from
     // a public packet or treated as a real authenticated player ID.
@@ -45,6 +45,17 @@ internal sealed class IntegratedWorldSession : IDisposable
                     !root.RootElement.TryGetProperty("Fabrication", out _) ||
                     !root.RootElement.TryGetProperty("World", out _))
                     throw new InvalidDataException("Incomplete integrated snapshot");
+                int diskVersion = root.RootElement.GetProperty("Version").GetInt32();
+                if (diskVersion != SchemaVersion && diskVersion != 2)
+                    throw new InvalidDataException("Unsupported integrated snapshot version");
+                if (diskVersion == SchemaVersion)
+                {
+                    if (!root.RootElement.TryGetProperty("GameIds", out var identity))
+                        throw new InvalidDataException("Missing identity map");
+                    RequireFields(identity, "Version", "ScopeId", "Revision", "Entries");
+                    RequireRecords(identity, "Entries", "GameId", "EntityId",
+                        "CreatedRevision");
+                }
                 // A syntactically valid partial JSON object must not silently
                 // reset stored energy, job receipts or world contents.
                 RequireFields(root.RootElement.GetProperty("Construction"),
@@ -74,6 +85,11 @@ internal sealed class IntegratedWorldSession : IDisposable
                 input.Position = 0;
                 document = JsonSerializer.Deserialize<IntegratedWorldDocument>(input)
                     ?? throw new InvalidDataException("Empty integrated snapshot");
+                if (diskVersion == 2)
+                {
+                    document.GameIds = new GameEntityIdentityMap(gridId).Snapshot();
+                    document.Version = SchemaVersion;
+                }
             }
             else
             {
@@ -82,7 +98,8 @@ internal sealed class IntegratedWorldSession : IDisposable
                     Construction = new ConstructionState().Snapshot(),
                     Power = new PowerGridState(gridId, powerCapacity).Snapshot(),
                     Fabrication = new FabricationState(recipes).Snapshot(),
-                    World = new WorldState().Snapshot()
+                    World = new WorldState().Snapshot(),
+                    GameIds = new GameEntityIdentityMap(gridId).Snapshot()
                 };
             }
 
@@ -114,7 +131,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting, world) =>
+            return Apply((construction, power, crafting, world, gameIds) =>
             {
                 ConstructionResult result = construction.Place(operationId,
                     expectedRevision, entityId, generation, kind, bounds, trustedPlayers);
@@ -140,13 +157,69 @@ internal sealed class IntegratedWorldSession : IDisposable
         }
     }
 
+    /// <summary>
+    /// Only trusted host code may mark a build verified. The passive Unity
+    /// observer never grants this provenance; UDP never calls this method.
+    /// </summary>
+    public ConstructionResult PlaceObserved(Guid operationId, long expectedRevision,
+        string gameId, int generation, string kind, ConstructionBounds bounds,
+        IReadOnlyCollection<ConstructionBounds> trustedPlayers,
+        ConstructionEventProvenance provenance)
+    {
+        lock (gate)
+        {
+            EnsureOpen();
+            if (provenance != ConstructionEventProvenance.VerifiedLocalBuild)
+                return new ConstructionResult(false, false, "origin_unverified",
+                    document.Construction.Revision, 0, 0);
+            if (!GameEntityIdentityMap.ValidId(gameId))
+                return new ConstructionResult(false, false, "invalid_game_id",
+                    document.Construction.Revision, 0, 0);
+            return Apply((construction, power, crafting, world, gameIds) =>
+            {
+                if (!gameIds.TryBind(gameId, out Guid entityId))
+                    return (new ConstructionResult(false, false, "identity_capacity",
+                        construction.Snapshot().Revision, 0, 0), false);
+                ConstructionResult result = construction.Place(operationId,
+                    expectedRevision, entityId, generation, kind, bounds, trustedPlayers);
+                if (!result.Applied || result.Duplicate)
+                    return (result, false);
+                if (kind == "Fabricator" &&
+                    !crafting.RegisterStation(entityId, generation))
+                    return (new ConstructionResult(false, false,
+                        "fabricator_registration_failed", result.Revision, 0, 0), false);
+                WorldEntity? prior = world.Snapshot().Entities
+                    .SingleOrDefault(e => e.Id == entityId);
+                WorldResult built = world.Apply(new WorldCommand(
+                    Guid.NewGuid(), HostAuthorityActorId, entityId, generation,
+                    prior?.Revision ?? 0, WorldAction.Build, Kind: kind),
+                    DateTime.UtcNow);
+                if (!built.Applied)
+                    return (new ConstructionResult(false, false,
+                        "world_registration_failed", result.Revision, 0, 0), false);
+                return (result, true);
+            });
+        }
+    }
+
+    /// <summary>Lookup never creates a binding.</summary>
+    public bool TryFindGameEntity(string gameId, out Guid entityId)
+    {
+        lock (gate)
+        {
+            EnsureOpen();
+            return GameEntityIdentityMap.Restore(document.GameIds,
+                document.Power.GridId).TryFind(gameId, out entityId);
+        }
+    }
+
     public ConstructionResult Connect(Guid operationId, long revision,
         Guid a, int generationA, Guid b, int generationB, ConstructionLinkKind kind)
     {
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting, world) =>
+            return Apply((construction, power, crafting, world, gameIds) =>
             {
                 var result = construction.Connect(operationId, revision,
                     a, generationA, b, generationB, kind);
@@ -161,7 +234,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting, world) =>
+            return Apply((construction, power, crafting, world, gameIds) =>
             {
                 ConstructionNode? node = construction.Snapshot().Nodes
                     .SingleOrDefault(n => n.Id == constructionId);
@@ -184,7 +257,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting, world) =>
+            return Apply((construction, power, crafting, world, gameIds) =>
             {
                 long before = power.Snapshot().LastTickMs;
                 if (!power.TryAdvance(hostMonotonicMs, out _))
@@ -211,7 +284,7 @@ internal sealed class IntegratedWorldSession : IDisposable
             if (effectiveUtc.Kind != DateTimeKind.Utc)
                 return IntegratedRemovalResult.Fail("invalid_host_utc");
 
-            return Apply((construction, power, crafting, world) =>
+            return Apply((construction, power, crafting, world, gameIds) =>
             {
                 var plan = construction.PreviewRemove(expectedRevision,
                     entityId, generation, cascade, trustedPlayers);
@@ -286,7 +359,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting, world) =>
+            return Apply((construction, power, crafting, world, gameIds) =>
             {
                 long revision = crafting.Snapshot().Revision;
                 bool credited = crafting.GrantMaterials(operationId, actorId,
@@ -302,7 +375,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting, world) =>
+            return Apply((construction, power, crafting, world, gameIds) =>
             {
                 if (!crafting.Snapshot().Jobs.Any(j => j.Id == jobId) &&
                     !crafting.TryOpen(stationId, generation, verifiedActor,
@@ -322,7 +395,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting, world) =>
+            return Apply((construction, power, crafting, world, gameIds) =>
             {
                 FabricationDeliveryResult result = crafting.DeliverToInventory(
                     jobId, verifiedActor, nowUtc);
@@ -336,7 +409,7 @@ internal sealed class IntegratedWorldSession : IDisposable
         lock (gate)
         {
             EnsureOpen();
-            return Apply((construction, power, crafting, world) =>
+            return Apply((construction, power, crafting, world, gameIds) =>
             {
                 long revision = crafting.Snapshot().Revision;
                 bool cancelled = crafting.Cancel(jobId, verifiedActor, nowUtc);
@@ -349,13 +422,16 @@ internal sealed class IntegratedWorldSession : IDisposable
     public IntegratedWorldDocument SnapshotForJoin() => Snapshot();
 
     private T Apply<T>(Func<ConstructionState, PowerGridState, FabricationState,
-        WorldState, (T Result, bool Changed)> operation)
+        WorldState, GameEntityIdentityMap, (T Result, bool Changed)> operation)
     {
         var construction = ConstructionState.Restore(document.Construction);
         var power = PowerGridState.Restore(document.Power);
         var crafting = FabricationState.Restore(document.Fabrication, recipes);
         var world = WorldState.Restore(document.World);
-        (T result, bool changed) = operation(construction, power, crafting, world);
+        var gameIds = GameEntityIdentityMap.Restore(
+            document.GameIds, document.Power.GridId);
+        (T result, bool changed) = operation(construction, power, crafting,
+            world, gameIds);
         if (!changed)
             return result;
 
@@ -366,7 +442,8 @@ internal sealed class IntegratedWorldSession : IDisposable
             Construction = construction.Snapshot(),
             Power = power.Snapshot(),
             Fabrication = crafting.Snapshot(),
-            World = world.Snapshot()
+            World = world.Snapshot(),
+            GameIds = gameIds.Snapshot()
         };
         Validate(next, recipes);
         Save(next);
@@ -406,15 +483,23 @@ internal sealed class IntegratedWorldSession : IDisposable
         if (snapshot == null || snapshot.Version != SchemaVersion ||
             snapshot.Revision < 0 || snapshot.Construction == null ||
             snapshot.Power == null || snapshot.Fabrication == null ||
-            snapshot.World == null)
+            snapshot.World == null || snapshot.GameIds == null)
             throw new InvalidDataException("Unsupported integrated world schema");
 
         var construction = ConstructionState.Restore(snapshot.Construction);
         PowerGridState.Restore(snapshot.Power);
         FabricationState.Restore(snapshot.Fabrication, recipes);
         WorldState.Restore(snapshot.World);
+        var identities = GameEntityIdentityMap.Restore(
+            snapshot.GameIds, snapshot.Power.GridId);
         Dictionary<Guid, ConstructionNode> nodes =
             construction.Snapshot().Nodes.ToDictionary(x => x.Id);
+
+        foreach (GameIdentityEntry mapped in identities.Snapshot().Entries)
+        {
+            if (!nodes.ContainsKey(mapped.EntityId))
+                throw new InvalidDataException("Game identity map has an orphaned entity.");
+        }
 
         // Validate both directions: no orphan world index entries and no
         // topology nodes absent from the general registry.
@@ -515,6 +600,7 @@ internal sealed class IntegratedWorldDocument
     public PowerDocument Power { get; set; } = null!;
     public FabricationDocument Fabrication { get; set; } = null!;
     public WorldDocument World { get; set; } = null!;
+    public GameIdentityDocument GameIds { get; set; } = null!;
 }
 
 internal sealed record IntegratedRemovalResult(
@@ -523,4 +609,12 @@ internal sealed record IntegratedRemovalResult(
 {
     internal static IntegratedRemovalResult Fail(string reason) =>
         new(false, false, reason, 0, 0);
+}
+
+internal enum ConstructionEventProvenance
+{
+    Unknown = 0,
+    SaveLoading = 1,
+    RemoteReplay = 2,
+    VerifiedLocalBuild = 3
 }
