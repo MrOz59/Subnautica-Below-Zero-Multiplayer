@@ -152,3 +152,16 @@ The scanner only inspects the loaded `Assembly-CSharp` methods by reflection.
 It never invokes, modifies or patches the game, and does not enable UDP.
 Actual method signatures still need verification from a legitimate Below Zero
 installation on the target platform.
+
+## Optional passive building hooks (new)
+
+Independently implemented Harmony observers are now available for
+`Constructable.Construct` and `BaseGhost.Finish`. They are **disabled
+by default** and never change the game, create world transactions or send
+network packets. Enable `[Development] ObserveBuildingHooks = true`
+to log bounded `[BuildObserve]` method-return diagnostics. Optional
+`ScanGameHooksOnStartup = true` separately reports method signatures.
+See [game hook research](docs/GAME_HOOKS_RESEARCH.md).
+
+The CI tests use fake Unity/Harmony classes only; real game integration
+and method signature validation remain pending.

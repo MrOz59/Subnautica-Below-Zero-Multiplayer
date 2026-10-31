@@ -80,3 +80,20 @@ host replays a remote game event.
 
 References and the prioritized integration list are in
 [GAME_HOOKS_RESEARCH.md](GAME_HOOKS_RESEARCH.md).
+
+## Experimental passive building observers
+
+`BuildingHookObserver` adds **opt-in Harmony Postfix** callbacks for
+`Constructable.Construct` and `BaseGhost.Finish`. They log only local
+method-return observations into a bounded queue. They do not modify world
+objects, modify inventories, suppress vanilla methods, send packets or
+modify the integrated world transaction store. The observations deliberately
+have no persistent entity ID until real game metadata is validated.
+
+The observer is a separate, explicit option from `GameHookCatalog`:
+`[Development] ObserveBuildingHooks = false` by default. It resolves
+unambiguous instance methods in the real `Assembly-CSharp`, skips unsuitable
+targets and removes only its own Harmony Postfix patches on shutdown.
+The fake-Harmony tests cover install, observation, bounded storage, missing
+and ambiguous methods, independent mod patch preservation and cleanup.
+See [GAME_HOOKS_RESEARCH.md](GAME_HOOKS_RESEARCH.md).

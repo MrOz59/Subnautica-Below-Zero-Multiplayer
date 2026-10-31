@@ -168,9 +168,10 @@ CompileCheck project covers exact, ambiguous and missing method cases.
 
 1. Verify `Assembly-CSharp.dll` method signatures from the installed game,
    including async/coroutine return types and overloaded methods.
-2. Implement **opt-in, non-mutating Harmony observers** for
-   `Constructable.Construct`, `BaseGhost.Finish` and relevant teardown
-   completion. Preserve original calls and do not return `false` from hooks.
+2. **Implemented (candidate-only):** opt-in, non-mutating Harmony Postfix
+   observers for `Constructable.Construct` and `BaseGhost.Finish`.
+   The installed game signatures still need validation; no teardown-complete
+   observers or save/replication writes are enabled yet.
 3. Emit local, main-thread, immutable capture records; verify player
    versus world/remote origin and deduplicate by stable entity ID.
 4. Integrate a trusted, authenticated event dispatcher to
@@ -181,3 +182,57 @@ CompileCheck project covers exact, ambiguous and missing method cases.
 
 Do not copy the original Harmony patch bodies: the game-facing target names
 are enough to write a separate implementation with clear source boundaries.
+
+## Passive construction hooks implemented (experimental)
+
+`src/BelowZeroCoop.Plugin/BuildingHookObserver.cs` now has an independent
+Harmony implementation. It is completely disabled by default.
+
+To inspect a legitimately installed copy of Below Zero, the plugin config can
+enable **both** the separate read-only signature scan and the independent
+passive observer:
+
+```ini
+[Development]
+ScanGameHooksOnStartup = true
+ObserveBuildingHooks = true
+```
+
+Both options default to `false`; neither enables the development UDP client.
+The observer looks for only the loaded `Assembly-CSharp`, and installs
+Harmony **Postfix-only** methods on uniquely resolved, nonabstract instance
+methods `Constructable.Construct` and `BaseGhost.Finish`. If a method is
+missing, ambiguous or fails patch installation, that method is skipped and
+reported. There is no `Prefix`, no return-value modification and no method
+suppression.
+
+Captured records include the method name, observed UTC time, instance type
+and a **process-local volatile token**. This token is *not* a stable world
+object identity; the observer cannot yet create a `WorldState` entity or
+persist a building. They are queued in a fixed-size buffer (128 entries)
+with old-event drop counting and a maximum of 8 log entries per Unity frame.
+Logging uses `[BuildObserve]` in the BepInEx output.
+
+**Construction nuance:** `Constructable.Construct` may execute for partial
+building progress, so the observation is called
+`construct_method_returned`, not “construction completed.”
+Similarly, `BaseGhost.Finish` is treated as a method-return observation,
+not unconditional proof that world persistence succeeded.
+
+On plugin destruction the observer releases only Postfix patches belonging
+to its own Harmony owner ID. Existing patches from other mods are not
+globally removed. A fake-Harmony CI suite confirms that methods still run
+unmodified, observer buffers are bounded, missing/overloaded targets are
+skipped, and other owners remain patched after cleanup.
+
+This implementation **has not been run against real game binaries** yet.
+The fake Unity tests do not guarantee Mono/BepInEx/Harmony compatibility
+with a particular Below Zero version. A production plugin build requires
+the genuine `0Harmony.dll` from the user's BepInEx 5 installation; do not
+bundle game or third-party binaries in the repository.
+
+Future steps: inspect version-specific class/method signatures, extract
+stable game entity IDs and transforms via verified game APIs, distinguish
+local actions from replayed remote events and completed construction from
+partial progress, then feed *authenticated* server events into the
+`IntegratedWorldSession`. Until then this is **local instrumentation only**.

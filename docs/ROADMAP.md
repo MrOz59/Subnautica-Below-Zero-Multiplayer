@@ -112,7 +112,9 @@ playability until gameplay replication is implemented and tested.
       with overload/missing-method reporting and fake-Unity CI checks.
 - [ ] Confirm real game method signatures and coroutine semantics against
       the user's legitimately installed Below Zero assemblies.
-- [ ] Add opt-in independent Harmony observers after confirmation;
-      never suppress original game methods or change singleplayer.
+- [x] Add independent off-by-default Harmony Postfix observers for the two
+      candidate build entrypoints, with bounded logs and safe self-unpatch.
+- [ ] Verify these candidate hooks against genuine game/BepInEx assemblies,
+      including actual return values, overloads and coroutine behavior.
 - [ ] Connect authenticated, host-authoritative observations to the
       integrated world transaction layer.
