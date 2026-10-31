@@ -11,7 +11,10 @@ namespace BelowZeroCoop.Protocol
         Ping = 1,
         Pong = 2,
         Hello = 3,
-        HelloAck = 4
+        HelloAck = 4,
+        Welcome = 6,
+        PeerLeft = 7,
+        Goodbye = 8
     }
 
     public struct Packet
@@ -28,13 +31,15 @@ namespace BelowZeroCoop.Protocol
 
     public static class PacketCodec
     {
-        public const int WireVersion = 1;
+        public const int WireVersion = 2;
         public const int PacketLength = 10;
 
         private static bool IsSupported(PacketType type)
         {
             return type == PacketType.Ping || type == PacketType.Pong ||
-                   type == PacketType.Hello || type == PacketType.HelloAck;
+                   type == PacketType.Hello || type == PacketType.HelloAck ||
+                   type == PacketType.Welcome || type == PacketType.PeerLeft ||
+                   type == PacketType.Goodbye;
         }
 
         public static byte[] Encode(Packet packet)

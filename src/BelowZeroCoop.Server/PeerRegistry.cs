@@ -22,14 +22,11 @@ internal sealed class PeerRegistry
 
     public bool TryHello(IPEndPoint endpoint, DateTime utcNow, out Peer peer)
     {
-        RemoveExpired(utcNow);
         if (peers.TryGetValue(endpoint, out peer!))
         {
             peer.LastSeenUtc = utcNow;
-            // A fresh hello can represent a client restart with a new local
-            // sequence counter, even if the UDP endpoint is the same.
-            peer.HasMovement = false;
-            peer.LastSequence = 0;
+            // A retry of Hello must not invalidate a successfully established
+            // movement sequence or allow old snapshots to be replayed.
             return true;
         }
 
@@ -48,7 +45,6 @@ internal sealed class PeerRegistry
 
     public bool TryGet(IPEndPoint endpoint, DateTime utcNow, out Peer peer)
     {
-        RemoveExpired(utcNow);
         if (!peers.TryGetValue(endpoint, out peer!))
             return false;
         peer.LastSeenUtc = utcNow;
@@ -98,12 +94,33 @@ internal sealed class PeerRegistry
         return true;
     }
 
-    private void RemoveExpired(DateTime utcNow)
+    public bool TryRemove(IPEndPoint endpoint, out Peer peer)
     {
-        foreach (IPEndPoint endpoint in peers.Where(item => utcNow - item.Value.LastSeenUtc > Expiry)
-                                             .Select(item => item.Key).ToArray())
-            peers.Remove(endpoint);
+        if (!peers.TryGetValue(endpoint, out peer!))
+            return false;
+
+        return peers.Remove(endpoint);
     }
+
+    /// <summary>
+    /// Called from the server receive loop AND its idle tick. Returns exact
+    /// peer identities so remote debug objects can be despawned immediately.
+    /// </summary>
+    public List<Peer> Prune(DateTime utcNow)
+    {
+        var removed = new List<Peer>();
+        foreach (Peer peer in peers.Values)
+        {
+            if (utcNow - peer.LastSeenUtc > Expiry)
+                removed.Add(peer);
+        }
+
+        foreach (Peer peer in removed)
+            peers.Remove(peer.Endpoint);
+
+        return removed;
+    }
+
 }
 
 internal sealed class Peer
