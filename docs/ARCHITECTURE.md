@@ -63,3 +63,20 @@ Server (C#, .NET 8)
 
 BepInEx uses LGPL components; end users must install them separately.
 The game and original mod have separate licensing and are not redistributed.
+
+## Hook discovery versus gameplay patching
+
+The optional `GameHookCatalog` is a **read-only reflection probe** limited
+to the loaded `Assembly-CSharp` assembly. It checks candidate class names,
+methods and overload counts, logging `Found`, `Ambiguous`,
+`TypeMissing`, `MethodMissing` or `InspectionFailed`.
+
+The catalog contains game-facing identifiers researched from the original
+mod's public Harmony patch declarations (not any of its original patch
+bodies). It **does not install Harmony patches**. A real implementation
+must resolve signatures against the target game version, handle coroutine
+completion safely, guard singleplayer, and avoid feedback loops when the
+host replays a remote game event.
+
+References and the prioritized integration list are in
+[GAME_HOOKS_RESEARCH.md](GAME_HOOKS_RESEARCH.md).

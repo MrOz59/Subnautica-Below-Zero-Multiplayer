@@ -135,3 +135,20 @@ by crash/replay/occupied-base/concurrent-removal regressions.
 This is **not enabled in the live game or debug UDP server** and does not
 modify native Below Zero saves. See
 [the integrated world transaction design](docs/INTEGRATED_WORLD.md).
+
+## Researching actual Below Zero hooks (opt-in, read only)
+
+The original mod's public patch declarations reveal game method names for
+`Constructable`, `BaseGhost`, `GhostCrafter`, `PowerRelay`,
+`QuickSlots`, `EntityCell` and others. These are game API identifiers,
+not code transplanted from that mod. See
+[GAME_HOOKS_RESEARCH.md](docs/GAME_HOOKS_RESEARCH.md) for the detailed map,
+original source references and integration priorities.
+
+Our BepInEx plugin includes an **off-by-default diagnostic**: set
+`[Development] ScanGameHooksOnStartup = true` in the BepInEx plugin config,
+restart the game and read `[HookScan]` entries in the log.
+The scanner only inspects the loaded `Assembly-CSharp` methods by reflection.
+It never invokes, modifies or patches the game, and does not enable UDP.
+Actual method signatures still need verification from a legitimate Below Zero
+installation on the target platform.

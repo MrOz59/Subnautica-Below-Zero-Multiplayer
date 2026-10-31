@@ -103,3 +103,16 @@ playability until gameplay replication is implemented and tested.
       Below Zero gameplay APIs.
 - [ ] Integrate with authenticated reliable multiplayer events and the
       game's own save/inventory system.
+
+## Game API hook research
+
+- [x] Audit original mod's public Harmony declarations for construction,
+      Fabricator, power, inventory, quickslots, streaming and vehicle events.
+- [x] Independent, opt-in read-only `Assembly-CSharp` method scanner
+      with overload/missing-method reporting and fake-Unity CI checks.
+- [ ] Confirm real game method signatures and coroutine semantics against
+      the user's legitimately installed Below Zero assemblies.
+- [ ] Add opt-in independent Harmony observers after confirmation;
+      never suppress original game methods or change singleplayer.
+- [ ] Connect authenticated, host-authoritative observations to the
+      integrated world transaction layer.
