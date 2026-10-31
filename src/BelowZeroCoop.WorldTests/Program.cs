@@ -273,4 +273,5 @@ DateTime now = new(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc);
 }
 
 ConstructionTopologyTests.Run();
+IntegratedWorldTests.Run();
 Console.WriteLine("World-state regressions (#77/#82/#85) passed.");
