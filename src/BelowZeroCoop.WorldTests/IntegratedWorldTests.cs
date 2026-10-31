@@ -280,11 +280,13 @@ internal static class IntegratedWorldTests
 
             json = JsonNode.Parse(File.ReadAllText(path + ".bak"))!;
             File.WriteAllText(path, json.ToJsonString());
-            using var restored = new IntegratedWorldSession(
-                path, gridId, 10000, new[] { Recipe });
-            Check(restored.Snapshot().Construction.Nodes.Count == 1 &&
-                  restored.Snapshot().World.Entities.Count == 1,
-                "manual backup recovery restores a matching complete aggregate");
+            using (var restored = new IntegratedWorldSession(
+                path, gridId, 10000, new[] { Recipe }))
+            {
+                Check(restored.Snapshot().Construction.Nodes.Count == 1 &&
+                      restored.Snapshot().World.Entities.Count == 1,
+                    "manual backup recovery restores a matching complete aggregate");
+            } // release exclusive local writer lock before testing corrupt reloads
             var tampered = JsonNode.Parse(File.ReadAllText(path))!;
             tampered["World"]!["Entities"]!.AsArray()[0]!["Kind"] = "OtherThing";
             File.WriteAllText(path, tampered.ToJsonString());
