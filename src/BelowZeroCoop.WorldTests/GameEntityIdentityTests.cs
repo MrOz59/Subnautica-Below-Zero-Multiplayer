@@ -21,6 +21,7 @@ internal static class GameEntityIdentityTests
         CorruptionAndCapacity();
         AtomicObservedConstructionAndRestart();
         LegacySchemaMigration();
+        CorruptCompositeIdentityIsRejected();
         SaveFailureCannotPublishMapping();
         Console.WriteLine("Game-origin identity and provenance regressions passed.");
     }
@@ -133,6 +134,13 @@ internal static class GameEntityIdentityTests
                     "source mapping, construction and world index committed together");
 
                 long revision = host.Snapshot().Revision;
+                var operationCollision = host.PlaceObserved(op, 0,
+                    "different:piece", 1, "Room", At(2), Nobody,
+                    ConstructionEventProvenance.VerifiedLocalBuild);
+                Check(!operationCollision.Applied &&
+                      operationCollision.Reason == "operation_id_collision" &&
+                      host.Snapshot().GameIds.Entries.Count == 1,
+                    "reused operation UUID cannot assign a second game object ID");
                 Check(host.PlaceObserved(op, 0, "piece:101", 1,
                     "Room", At(2), Nobody,
                     ConstructionEventProvenance.VerifiedLocalBuild).Duplicate &&
@@ -213,6 +221,44 @@ internal static class GameEntityIdentityTests
                 File.ReadAllText(file))!;
             Check(onDisk.Version == 3 && onDisk.GameIds != null,
                 "durable migration preserves all existing construction data");
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static void CorruptCompositeIdentityIsRejected()
+    {
+        string dir = Path.Combine(Path.GetTempPath(),
+            "bzc-identity-tamper-" + Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(dir, "world.json");
+        Guid scope = Guid.NewGuid();
+        try
+        {
+            using (var host = new IntegratedWorldSession(
+                path, scope, 10000, Array.Empty<FabricationRecipe>()))
+            {
+                Check(host.PlaceObserved(Guid.NewGuid(), 0,
+                    "piece:bound", 1, "Room", At(1), Nobody,
+                    ConstructionEventProvenance.VerifiedLocalBuild).Applied,
+                    "source bound for composite corruption test");
+            }
+
+            var document = JsonSerializer.Deserialize<IntegratedWorldDocument>(
+                File.ReadAllText(path))!;
+            document.GameIds.Entries[0].EntityId = Guid.NewGuid();
+            File.WriteAllText(path, JsonSerializer.Serialize(document));
+
+            bool refused = false;
+            try
+            {
+                using var invalid = new IntegratedWorldSession(
+                    path, scope, 10000, Array.Empty<FabricationRecipe>());
+            }
+            catch (InvalidDataException) { refused = true; }
+            Check(refused, "corrupted nested identity cannot pass integrated restore");
         }
         finally
         {
