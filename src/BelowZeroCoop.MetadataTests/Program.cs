@@ -271,8 +271,8 @@ static PowerCommand Device(long revision, PowerAction action,
         try { GameplayStore.LoadPower(path); }
         catch (InvalidDataException) { powerFileCorrupt = true; }
         Check(powerFileCorrupt, "invalid power JSON cannot silently reset grid");
-        Check(GameplayStore.LoadPower(path + ".bak").Snapshot().EnergyMilliUnits == 10000,
-              "explicit power backup remains recoverable");
+        Check(GameplayStore.LoadPower(path + ".bak").Snapshot().EnergyMilliUnits == 8000,
+              "explicit power backup retains the PREVIOUS committed energy state");
 
         var incomplete = JsonNode.Parse(File.ReadAllText(path + ".bak"))!;
         incomplete["Devices"]!.AsArray()[0]!.AsObject().Remove("RateMilliUnitsPerSecond");
