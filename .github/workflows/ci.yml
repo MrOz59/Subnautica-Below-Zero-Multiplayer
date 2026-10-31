@@ -30,6 +30,7 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - run: dotnet build src/BelowZeroCoop.Server/BelowZeroCoop.Server.csproj --configuration Release
+      - run: dotnet build src/BelowZeroCoop.Plugin.CompileCheck/BelowZeroCoop.Plugin.CompileCheck.csproj --configuration Release
       - run: dotnet run --project src/BelowZeroCoop.SmokeTests/BelowZeroCoop.SmokeTests.csproj --configuration Release
       - uses: actions/setup-python@v5
         with:
