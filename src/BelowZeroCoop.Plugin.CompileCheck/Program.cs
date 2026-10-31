@@ -151,6 +151,25 @@ using (var observer = new BuildingHookObserver())
             ghostObservation.Game.CompletionEvidence == "finish_returned_candidate",
             "parent base ID is distinct from nonexistent final-piece ID");
 
+    var piece = new ConstructableBase();
+    piece.gameObject.SetComponent(new UniqueIdentifier { Id = "piece-uid-900" });
+    piece.gameObject.transform.position = new UnityEngine.Vector3(88, 17, -44);
+    ghost.ParentPiece = piece;
+    ghost.gameObject.SetComponent(new UniqueIdentifier { Id = "temporary-ghost-id" });
+    ghost.Finish();
+    var placed = observer.Drain(16).Single();
+    Require(placed.Game.ObservedObjectId == "piece-uid-900" &&
+            placed.Game.ObjectIdSource == "constructable_base_parent_uid" &&
+            placed.Game.TargetBaseId == "base-owner-500" &&
+            placed.Game.WorldTransform.X == 88 &&
+            placed.Game.Origin == "unknown" &&
+            placed.Game.CompletionEvidence == "finish_returned_candidate",
+            "placed-piece candidate uses enclosing construction ID, never temporary ghost ID");
+    ghost.ParentPiece = null;
+    ghost.Finish();
+    Require(observer.Drain(16).Single().Game.ObservedObjectId == null,
+            "missing parent-piece identity does not fall back to misleading ghost UID");
+
     var invalidIdentity = new Constructable { techType = "BaseWall", constructedAmount = 1f };
     invalidIdentity.gameObject.SetComponent(new UniqueIdentifier { Id = "bad\\nidentity" });
     invalidIdentity.gameObject.transform.position =

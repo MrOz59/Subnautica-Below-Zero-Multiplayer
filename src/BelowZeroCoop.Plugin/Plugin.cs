@@ -152,6 +152,7 @@ namespace BelowZeroCoop.Plugin
                     Logger.LogInfo("[BuildObserve] " + observed.EventName +
                         " type=" + observed.RuntimeType +
                         " rawGameId=" + (game.ObservedObjectId ?? "unavailable") +
+                        " idSource=" + game.ObjectIdSource +
                         " parentBaseId=" + (game.TargetBaseId ?? "unavailable") +
                         " tech=" + (game.TechType ?? "unknown") +
                         " stage=" + game.CompletionEvidence +

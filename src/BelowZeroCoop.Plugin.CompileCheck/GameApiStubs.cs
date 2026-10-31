@@ -187,10 +187,20 @@ public sealed class FakeBaseOwner
     public UnityEngine.GameObject gameObject { get; } = new UnityEngine.GameObject();
 }
 
+public sealed class ConstructableBase
+{
+    public UnityEngine.GameObject gameObject { get; } = new UnityEngine.GameObject();
+    public UnityEngine.Transform transform => gameObject.transform;
+}
 public sealed class BaseGhost
 {
     public UnityEngine.GameObject gameObject { get; } = new UnityEngine.GameObject();
     public FakeBaseOwner TargetBase { get; set; }
+    public ConstructableBase ParentPiece { get; set; }
+    public object GetComponentInParent(System.Type componentType)
+    {
+        return componentType == typeof(ConstructableBase) ? ParentPiece : null;
+    }
     public static int Executions { get; private set; }
     public void Finish()
     {
