@@ -90,3 +90,16 @@ playability until gameplay replication is implemented and tested.
 - [ ] Unify construction graph with WorldState, FabricationState and
       PowerGridState under one durable host-authoritative transaction.
 - [ ] Validate actual game construction geometry and player occupancy hooks.
+
+## Integration foundation (independent development)
+
+- [x] Single-file transactional aggregate for construction topology, world
+      entity index, power state and Fabricator jobs/ingredients.
+- [x] Cross-domain identity/generation/tombstone validation during load/save,
+      with fail-closed incomplete nested JSON checks.
+- [x] Atomic cascade cleanup and preservation of finished versus unfinished
+      Fabricator output, including replay and disk restart regressions.
+- [ ] Replace provisional kind labels, geometry and host clocks with verified
+      Below Zero gameplay APIs.
+- [ ] Integrate with authenticated reliable multiplayer events and the
+      game's own save/inventory system.

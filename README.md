@@ -122,3 +122,16 @@ removable power connections. It supports safe removal previews, explicit
 atomic cascades, player-occupancy checks, persistent tombstones and a bounded
 topology change feed. These are server-domain regressions, **not live game
 integration**. See [construction safety design](docs/CONSTRUCTION.md).
+
+## Experimental integrated world snapshots
+
+A new local `IntegratedWorldSession` can persist ConstructionState,
+WorldState, PowerGridState and FabricationState in **one validated transaction**.
+Build/delete/rebuild mirror IDs across construction and world records; deleting
+a room also detaches cables, removes affected power devices and settles
+Fabricator work and reserved ingredients before saving. The design is covered
+by crash/replay/occupied-base/concurrent-removal regressions.
+
+This is **not enabled in the live game or debug UDP server** and does not
+modify native Below Zero saves. See
+[the integrated world transaction design](docs/INTEGRATED_WORLD.md).

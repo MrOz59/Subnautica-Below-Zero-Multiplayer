@@ -108,3 +108,12 @@ delta delivery.
 
 **Status: isolated design and CI regressions, not working multiplayer
 construction inside the game.**
+
+## Composite transaction follow-up
+
+The topology is now also exercised through
+[IntegratedWorldSession](INTEGRATED_WORLD.md). That optional server-side
+prototype coordinates removal with WorldState tombstones, power-source
+invalidation and Fabricator cancellation/ingredient refunds within one
+locally persisted snapshot. It does **not** expose any construction commands
+to the UDP development server or mutate Subnautica's native saves.
