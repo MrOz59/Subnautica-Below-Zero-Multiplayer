@@ -91,6 +91,11 @@
                 Quaternion rotation = entity.GameObject.transform.rotation;
                 float now = Time.realtimeSinceStartup;
 
+                // Maintain local authoritative state even if this snapshot is
+                // below the network send threshold.
+                entity.Position = position.ToZeroVector3();
+                entity.Rotation = rotation.ToZeroQuaternion();
+
                 SentState last;
                 if (this.lastSent.TryGetValue(entity.Id, out last) &&
                     now - last.Time < HeartbeatSeconds &&
@@ -112,9 +117,6 @@
                     Rotation = rotation,
                     Time = now
                 };
-
-                entity.Position = position.ToZeroVector3();
-                entity.Rotation = rotation.ToZeroQuaternion();
 
                 this.Positions.Add(new WorldDynamicEntityPosition() {
                     Id       = entity.Id,

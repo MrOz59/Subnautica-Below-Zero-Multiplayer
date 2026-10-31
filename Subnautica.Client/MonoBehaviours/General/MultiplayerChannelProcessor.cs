@@ -4,6 +4,7 @@
     using System.Collections;
     using System.Collections.Generic;
     using System.Collections.Concurrent;
+    using System.Diagnostics;
 
     using Subnautica.API.Enums;
     using Subnautica.API.Extensions;
@@ -19,6 +20,8 @@
 
     public class MultiplayerChannelProcessor : MonoBehaviour
     {
+        // Avoid network catch-up consuming an entire game frame during a burst.
+        private readonly Stopwatch dispatchWatch = new Stopwatch();
         /**
          *
          * Player.Update Kilidi
@@ -121,6 +124,11 @@
                              this.ChannelId == NetworkChannel.EntityMovement ||
                              this.ChannelId == NetworkChannel.FishMovement ? 64 : 128;
 
+                // Initial sync can consume a little more per frame than active gameplay.
+                double timeBudgetMs = this.ChannelId == NetworkChannel.Startup ||
+                                      this.ChannelId == NetworkChannel.StartupWorldLoaded ? 4.0 : 2.0;
+                this.dispatchWatch.Restart();
+
                 NetworkPacket packet;
                 while (budget-- > 0 && this.Packets.TryDequeue(out packet))
                 {
@@ -147,6 +155,11 @@
                     {
                         Log.Error($"MultiplayerDataReceive Exception, ChannelId: {this.ChannelId}, Error Message: {e}");
                     }
+
+                    if (this.dispatchWatch.Elapsed.TotalMilliseconds >= timeBudgetMs)
+                    {
+                        break;
+                    }
                 }
             }
         }
@@ -162,6 +175,7 @@
         {
             this.IsAsyncConsuming = true;
 
+            int processedThisFrame = 0;
             NetworkPacket packet;
             while (this.Packets.TryDequeue(out packet))
             {
@@ -198,6 +212,14 @@
                 else
                 {
                     Log.Error($"AsyncConsumeQueue -> Packet Not Found: {this.ChannelId}");
+                }
+
+                // When processors complete synchronously, the coroutine otherwise
+                // drains the entire queue in a single frame.
+                if (++processedThisFrame >= 32)
+                {
+                    processedThisFrame = 0;
+                    yield return CoroutineUtils.waitForNextFrame;
                 }
             }
 
