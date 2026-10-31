@@ -233,7 +233,7 @@
 
                 this.NetworkServer = new NetManager(new ServerListener())
                 {
-                    UpdateTime            = 1,
+                    UpdateTime            = 10,
                     AutoRecycle           = true,
                     UnsyncedReceiveEvent  = true,
                     UnsyncedDeliveryEvent = true,

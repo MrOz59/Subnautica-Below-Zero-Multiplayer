@@ -16,6 +16,17 @@
 
     public class CreatureWatcher : MonoBehaviour
     {
+        private const float MinCreatureDeltaSquared = 0.01f;
+        private const float MinCreatureRotationDelta = 4f;
+
+        private struct SentState
+        {
+            public Vector3 Position;
+            public Quaternion Rotation;
+            public float Time;
+        }
+
+        private readonly Dictionary<ushort, SentState> lastCreatureSent = new Dictionary<ushort, SentState>();
         /**
          *
          * Timing nesnesini barındırır.
@@ -103,11 +114,37 @@
             {
                 if (creature.GameObject)
                 {
+                    Vector3 position = creature.GameObject.transform.position;
+                    Quaternion rotation = creature.GameObject.transform.rotation;
+                    float now = Time.realtimeSinceStartup;
+                    float heartbeat = creature.CreatureItem.Data.IsFastSyncActivated ? 0.5f : 1f;
+
+                    SentState last;
+                    if (this.lastCreatureSent.TryGetValue(creatureId, out last) &&
+                        now - last.Time < heartbeat &&
+                        (position - last.Position).sqrMagnitude < MinCreatureDeltaSquared &&
+                        Quaternion.Angle(rotation, last.Rotation) < MinCreatureRotationDelta)
+                    {
+                        return;
+                    }
+
+                    if (this.lastCreatureSent.Count >= 8192)
+                    {
+                        this.lastCreatureSent.Clear();
+                    }
+
+                    this.lastCreatureSent[creatureId] = new SentState()
+                    {
+                        Position = position,
+                        Rotation = rotation,
+                        Time = now
+                    };
+
                     this.Positions.Add(new WorldCreaturePosition()
                     {
                         CreatureId = creatureId,
-                        Position   = creature.GameObject.transform.position.Compress(),
-                        Rotation   = creature.GameObject.transform.rotation.Compress(),
+                        Position   = position.Compress(),
+                        Rotation   = rotation.Compress(),
                     });
                 }
                 else

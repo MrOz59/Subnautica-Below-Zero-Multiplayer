@@ -3,6 +3,8 @@
     using System.Collections.Generic;
     using System.Linq;
 
+    using UnityEngine;
+
     using Subnautica.API.Extensions;
     using Subnautica.API.Features;
     using Subnautica.Client.Core;
@@ -12,6 +14,20 @@
 
     public class EntityPosition
     {
+        // Only send new data when movement exceeds the visual dead-band.
+        // The heartbeat ensures that stationary objects still converge.
+        private const float MinPositionDeltaSquared = 0.0225f;
+        private const float MinRotationDelta = 3f;
+        private const float HeartbeatSeconds = 1f;
+
+        private struct SentState
+        {
+            public Vector3 Position;
+            public Quaternion Rotation;
+            public float Time;
+        }
+
+        private readonly Dictionary<ushort, SentState> lastSent = new Dictionary<ushort, SentState>();
         /**
          *
          * Timing nesnesini barındırır.
@@ -71,8 +87,34 @@
 
             if (entity.GameObject)
             {
-                entity.Position = entity.GameObject.transform.position.ToZeroVector3();
-                entity.Rotation = entity.GameObject.transform.rotation.ToZeroQuaternion();
+                Vector3 position = entity.GameObject.transform.position;
+                Quaternion rotation = entity.GameObject.transform.rotation;
+                float now = Time.realtimeSinceStartup;
+
+                SentState last;
+                if (this.lastSent.TryGetValue(entity.Id, out last) &&
+                    now - last.Time < HeartbeatSeconds &&
+                    (position - last.Position).sqrMagnitude < MinPositionDeltaSquared &&
+                    Quaternion.Angle(rotation, last.Rotation) < MinRotationDelta)
+                {
+                    return;
+                }
+
+                // Prevent indefinitely retaining state for entities that were removed.
+                if (this.lastSent.Count >= 8192)
+                {
+                    this.lastSent.Clear();
+                }
+
+                this.lastSent[entity.Id] = new SentState()
+                {
+                    Position = position,
+                    Rotation = rotation,
+                    Time = now
+                };
+
+                entity.Position = position.ToZeroVector3();
+                entity.Rotation = rotation.ToZeroQuaternion();
 
                 this.Positions.Add(new WorldDynamicEntityPosition() {
                     Id       = entity.Id,

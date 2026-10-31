@@ -113,7 +113,7 @@
                 {
                     Client = new NetManager(new ClientListener())
                     {
-                        UpdateTime            = 1,
+                        UpdateTime            = 10,
                         AutoRecycle           = true,
                         UnsyncedReceiveEvent  = true,
                         UnsyncedDeliveryEvent = true,
