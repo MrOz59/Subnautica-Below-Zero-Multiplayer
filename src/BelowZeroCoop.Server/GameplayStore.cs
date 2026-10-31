@@ -60,6 +60,20 @@ internal static class GameplayStore
         return FabricationState.Restore(document, trustedRecipes);
     }
 
+    public static void SaveConstruction(string path, ConstructionState state)
+    {
+        if (state == null)
+            throw new ArgumentNullException(nameof(state));
+        Write(path, state.Snapshot());
+    }
+
+    public static ConstructionState LoadConstruction(string path)
+    {
+        ConstructionDocument document = Read<ConstructionDocument>(
+            path, "Version", "Revision", "Nodes", "Links", "Receipts");
+        return ConstructionState.Restore(document);
+    }
+
     private static void Write<T>(string path, T document)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -155,6 +169,17 @@ internal static class GameplayStore
                         "ActorId", "Materials", "OwnedItems");
                     ValidateEntries(json.RootElement, "Grants",
                         "OperationId", "ActorId", "Material", "Quantity");
+                }
+
+                if (typeof(T) == typeof(ConstructionDocument))
+                {
+                    ValidateEntries(json.RootElement, "Nodes",
+                        "Id", "Generation", "Revision", "Kind", "Volume", "Deleted");
+                    ValidateEntries(json.RootElement, "Links",
+                        "A", "B", "GenerationA", "GenerationB", "Kind");
+                    ValidateEntries(json.RootElement, "Receipts",
+                        "OperationId", "Signature", "Revision",
+                        "RemovedCount", "DetachedCount");
                 }
             }
 
