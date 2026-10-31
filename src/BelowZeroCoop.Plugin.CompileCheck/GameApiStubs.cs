@@ -13,7 +13,12 @@ namespace UnityEngine
 {
     public class Object
     {
-        public static void Destroy(Object value) { }
+        public static int DestroyedCount { get; private set; }
+        public static void Destroy(Object value)
+        {
+            if (value != null)
+                DestroyedCount++;
+        }
     }
 
     public enum PrimitiveType { Capsule }

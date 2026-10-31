@@ -10,9 +10,11 @@ BOT Benson mod. Original project's restrictive notice is not a license grant.
 - Detection of installed Steam copies, including custom Steam libraries.
 - BepInEx setup checks and safe deployment of our compiled plugin assemblies.
 - Linux via Steam + Proton, with a documented winhttp DLL override.
-- Independent versioned UDP control and movement packet formats.
+- Independent version 2 UDP control and movement packet formats.
 - A .NET 8 development server with expiring peer sessions, movement
-  validation, server-assigned peer IDs and LAN relay.
+  validation, server-assigned peer IDs, LAN relay and late-join snapshots.
+- Best-effort peer departure notifications and idle expiry, including
+  cleanup of temporary remote capsules.
 - Portable, jitter-adaptive interpolation with delayed-packet rejection.
 - A BepInEx 5 Unity Mono plugin that can optionally send a local position
   snapshot at 20 Hz and render other peers as noninteractive debug capsules.

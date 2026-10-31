@@ -25,8 +25,15 @@ Require(output.Count == 3 && output[2].Sequence == 3,
         "network reset must not reuse a recent sequence number");
 
 // Simulate peer creation and removal without running any real game methods.
+int destroyedBefore = UnityEngine.Object.DestroyedCount;
 preview.OnPosition(new MovementDatagram(1, 5, 0.10, 3f, 0f, 4f), 0.25f);
 preview.Tick(0.26f, sample => output.Add(sample));
+preview.OnPeerLeft(5);
+Require(UnityEngine.Object.DestroyedCount == destroyedBefore + 1,
+        "PeerLeft immediately destroys the temporary remote capsule");
+preview.OnPeerLeft(5);
+Require(UnityEngine.Object.DestroyedCount == destroyedBefore + 1,
+        "Repeated PeerLeft is idempotent");
 preview.Tick(10.5f, sample => output.Add(sample));
 preview.Reset();
 

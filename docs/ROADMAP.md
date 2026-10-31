@@ -17,6 +17,9 @@ first-class runtime, while remaining compatible with Windows.
 - [x] Development-only position codec, peer relay, speed cap and basic replay protection.
 - [x] Optional 20 Hz Unity position publisher and remote debug capsules.
 - [x] Explicit LAN opt-in in the launcher, with persisted server logs.
+- [x] Server-assigned peer identities and late-join movement baseline.
+- [x] Best-effort Goodbye, PeerLeft and idle peer expiration.
+- [x] Repeated Hello retains anti-replay movement sequence state.
 - [ ] Validate build against the exact installed Below Zero version.
 - [ ] Test on real Linux/Proton and Windows systems.
 

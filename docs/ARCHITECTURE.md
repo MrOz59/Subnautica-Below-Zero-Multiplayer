@@ -22,9 +22,11 @@ Plugin (C#, BepInEx 5 + Unity Mono)
 
 Protocol (C#, .NET Standard 2.0)
   - Standalone codec usable by the mod and server.
-  - Format v1: ASCII BZC0 (4 bytes), version (1), type (1),
+  - Format v2: ASCII BZC0 (4 bytes), version (2), type (1),
     little-endian uint sequence (4) = 10 bytes.
-  - Type 1 = Ping; type 2 = Pong; type 3 = Hello; type 4 = HelloAck.
+  - Type 1 = Ping; 2 = Pong; 3 = Hello; 4 = HelloAck.
+  - Control type 6 = Welcome (server-assigned ID); 7 = PeerLeft;
+    8 = Goodbye (best-effort disconnect).
   - Type 5 = movement (34 bytes): 10-byte header, uint PeerId, float64
     sender monotonic timestamp, three float32 world coordinates.
   - Uploaded movement uses PeerId=0; only the server stamps peer IDs.
@@ -38,7 +40,10 @@ Protocol (C#, .NET Standard 2.0)
 
 Server (C#, .NET 8)
   - Development UDP probe/movement relay; listens on 127.0.0.1 by default.
-  - Hello required before any Ping or movement; sessions expire after 30s.
+  - Hello required before Ping/movement; sessions expire after 30s.
+  - Sends identity on join and immediate cached movement for existing peers.
+  - Best-effort PeerLeft on explicit exit and inactive-session pruning
+    even when no datagrams are being received.
   - At most eight peers, 40 accepted movement samples/second per peer.
   - Rejects repeated sequence numbers, spoofed peer IDs and implausible speed.
   - No real authentication, world or gameplay authority yet.
