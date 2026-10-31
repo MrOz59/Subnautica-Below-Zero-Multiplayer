@@ -36,7 +36,7 @@ The independent codebase is not copied from the original project.
 | [#6](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/6), [#10](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/10), [#12](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/12), [#79](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/79), [#80](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/80) | Illegal base changes, player collisions and construction remove/despawn errors | Check object preconditions and occupants on host; atomic builder transaction |
 | [#78](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/78) | Quickslots broke after metadata refactor | Independent versioned quickslot metadata with explicit own-format migration and strict regression tests; game integration pending |
 | [#13](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/13), [#81](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/81) | Energy production/consumption desync | Independent fixed-point power model, source tombstones, idempotent updates and restart tests; game integration pending |
-| [#3](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/3), [#76](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/76) | Fabricator interaction can become stuck | Explicit interaction owner, timeout/release and one-time item delivery |
+| [#3](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/3), [#76](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/76) | Fabricator interaction can become stuck | Standalone Fabricator lifecycle with short-lived UI leases, repeatable output tickets and idempotent acknowledgement; authentication/game adapter pending |
 | [#18](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/18) | Rejoining at last location, including base/Seatruck | Position + coordinate-space/vehicle attachment, server revision and safe spawn |
 | [#52](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/52) | Furniture looks wrong for another observer | Stable object transform and scene/space identity, not camera-relative positions |
 | [#70](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/70), [#72](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/72), [#74](https://github.com/ismail0234/Subnautica-Below-Zero-Multiplayer/issues/74) | Expensive or inconsistent world serialization/metadata and interactions | Explicit versioned data contracts, snapshot/delta codecs, load budget |
@@ -84,3 +84,11 @@ See [METADATA_POWER.md](METADATA_POWER.md). The standalone server domain now
 guards against silent slot loss during metadata migration (#78) and stale
 generation after a producer is removed (#81). Passing tests do not claim
 real Below Zero gameplay synchronization is complete.
+
+## Follow-up implementation: Fabricator interaction and item delivery
+
+See [FABRICATION.md](FABRICATION.md). The standalone state machine now separates
+UI leases, running work and output ownership. Historical #3/#76 regression
+tests cover cancel/reopen, repeated claims, disconnects, job completion and
+crash recovery. It is not wired into the live Fabricator, game inventory or
+the unauthenticated development UDP server.

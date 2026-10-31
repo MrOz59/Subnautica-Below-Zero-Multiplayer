@@ -49,6 +49,13 @@ first-class runtime, while remaining compatible with Windows.
       covered by upstream #78 regressions (not yet in the Unity game).
 - [x] Deterministic integer base power accounting, source generations and
       persistent snapshots, covered by upstream #81 regressions.
+- [x] Standalone Fabricator job lifecycle, UI leases, durable output
+      tickets and idempotent delivery acknowledgement (#3/#76).
+- [x] Fabrication regressions for concurrent use, disconnects, reopens,
+      destroyed stations, missing snapshots and pending-delivery restart.
+- [ ] Authenticate player crafting requests and validate recipe, ingredient
+      availability and atomic inventory consumption before any game integration.
+- [ ] Make the craft inventory handoff recoverably atomic across stored state.
 - [ ] Bind these systems to authenticated game entities and the game save.
 - [ ] Creature synchronization and server ownership.
 - [ ] Seatruck / Prawn / Snowfox state and transitions.
