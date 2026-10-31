@@ -21,6 +21,7 @@ namespace BelowZeroCoop.Plugin
         private const float SessionTimeoutSeconds = 8f;
 
         private ConfigEntry<bool> enableProbe;
+        private ConfigEntry<bool> scanGameHooksOnStartup;
         private ConfigEntry<bool> enableMovementPreview;
         private readonly MovementPreview movementPreview = new MovementPreview();
         private bool previewActive;
@@ -50,6 +51,8 @@ namespace BelowZeroCoop.Plugin
         {
             enableProbe = Config.Bind("Network", "EnableProbe", false,
                 "Enable a development-only UDP connectivity probe. Not multiplayer.");
+            scanGameHooksOnStartup = Config.Bind("Development", "ScanGameHooksOnStartup", false,
+                "Read-only inspection of game method names. Logs status; never patches gameplay.");
             enableMovementPreview = Config.Bind("Development", "EnableMovementPreview", false,
                 "Enable sending local position and rendering temporary peer capsules. LAN debug only.");
             serverHost = Config.Bind("Network", "Host", "127.0.0.1",
@@ -58,6 +61,28 @@ namespace BelowZeroCoop.Plugin
                 "UDP port of the development server.");
 
             Logger.LogInfo("BelowZeroCoop loaded. No playable multiplayer features yet.");
+            if (scanGameHooksOnStartup.Value)
+            {
+                var results = GameHookCatalog.Probe(
+                    AppDomain.CurrentDomain.GetAssemblies(), GameHookCatalog.Targets);
+                int found = 0, missing = 0, ambiguous = 0;
+                foreach (GameHookCatalog.Result item in results)
+                {
+                    if (item.Status == GameHookCatalog.ProbeStatus.Found)
+                        found++;
+                    else if (item.Status == GameHookCatalog.ProbeStatus.Ambiguous)
+                        ambiguous++;
+                    else
+                        missing++;
+
+                    Logger.LogInfo("[HookScan] " + item.Target.Area + " " +
+                        item.Target.TypeName + "." + item.Target.MethodName + ": " +
+                        item.Status + " — " + item.Detail);
+                }
+                Logger.LogInfo("[HookScan] Read-only scan: " + found +
+                    " found, " + ambiguous + " ambiguous, " + missing +
+                    " unavailable. No game methods were patched.");
+            }
         }
 
         private void Update()

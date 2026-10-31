@@ -64,4 +64,26 @@ update.Invoke(plugin, null);
 Require(UnityEngine.GameObject.CreatedCount == visualsBeforeSingleplayer,
         "disabled plugin must not spawn remote objects in singleplayer");
 
+// Hook discovery is read-only. It cannot patch or invoke game methods.
+var hooks = GameHookCatalog.Probe(
+    new[] { typeof(GameHookProbeFixture).Assembly },
+    new[]
+    {
+        new GameHookCatalog.Target("Test", "GameHookProbeFixture",
+            "Present", "After", "exactly one method"),
+        new GameHookCatalog.Target("Test", "GameHookProbeFixture",
+            "Overloaded", "Before", "must disambiguate overloads"),
+        new GameHookCatalog.Target("Test", "GameHookProbeFixture",
+            "NotPresent", "Before", "unknown method"),
+        new GameHookCatalog.Target("Test", "MissingGameType",
+            "Anything", "Before", "unknown type")
+    });
+Require(hooks.Count == 4 && hooks[0].Status == GameHookCatalog.ProbeStatus.Found &&
+        hooks[1].Status == GameHookCatalog.ProbeStatus.Ambiguous &&
+        hooks[2].Status == GameHookCatalog.ProbeStatus.MethodMissing &&
+        hooks[3].Status == GameHookCatalog.ProbeStatus.TypeMissing,
+        "hook diagnostics distinguish found, overloaded and missing game methods");
+Require(GameHookCatalog.Targets.Count >= 30,
+        "hook catalog covers core world, inventory and construction targets");
+
 Console.WriteLine("Plugin syntax, disabled-singleplayer and fake-Unity lifecycle tests passed.");

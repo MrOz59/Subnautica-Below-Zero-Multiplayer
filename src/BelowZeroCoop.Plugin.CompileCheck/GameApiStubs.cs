@@ -119,3 +119,11 @@ namespace BepInEx
         protected ManualLogSource Logger { get; } = new ManualLogSource();
     }
 }
+
+// Reflection-only hook scanner fixture; absent from real production game.
+public sealed class GameHookProbeFixture
+{
+    public void Present() { }
+    public void Overloaded(int value) { }
+    public void Overloaded(string value) { }
+}
