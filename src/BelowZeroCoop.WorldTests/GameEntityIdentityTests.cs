@@ -94,7 +94,7 @@ internal static class GameEntityIdentityTests
             "bzc-game-identities-" + Guid.NewGuid().ToString("N"));
         string file = Path.Combine(dir, "world.json");
         Guid scope = Guid.NewGuid(), op = Guid.NewGuid();
-        Guid entityId;
+        Guid entityId = Guid.Empty;
         try
         {
             using (var host = new IntegratedWorldSession(
