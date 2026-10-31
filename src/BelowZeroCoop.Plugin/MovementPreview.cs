@@ -38,7 +38,8 @@ namespace BelowZeroCoop.Plugin
             }
 
             remotePeers.Clear();
-            sequence = 0;
+            // Keep our outgoing sequence monotonic across network reconnects.
+            // The same server-side endpoint may still have recent snapshots.
             nextSendAt = 0f;
         }
 

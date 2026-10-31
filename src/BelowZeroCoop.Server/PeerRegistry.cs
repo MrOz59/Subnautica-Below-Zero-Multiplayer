@@ -26,6 +26,10 @@ internal sealed class PeerRegistry
         if (peers.TryGetValue(endpoint, out peer!))
         {
             peer.LastSeenUtc = utcNow;
+            // A fresh hello can represent a client restart with a new local
+            // sequence counter, even if the UDP endpoint is the same.
+            peer.HasMovement = false;
+            peer.LastSequence = 0;
             return true;
         }
 

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -11,5 +12,6 @@
     <Compile Include="../BelowZeroCoop.Plugin/Plugin.cs" Link="Plugin.cs" />
     <Compile Include="../BelowZeroCoop.Plugin/MovementPreview.cs" Link="MovementPreview.cs" />
     <Compile Include="GameApiStubs.cs" />
+    <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>
