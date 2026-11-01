@@ -214,3 +214,14 @@ evidence of permanent deletion. No tracker confirmation, world tombstone,
 network replication, or save writes are triggered. The separate
 `ObserveBuildingHooks` option still works independently. See
 [hook research](docs/GAME_HOOKS_RESEARCH.md).
+
+
+## Development LAN transport hardening
+
+The debug UDP server throttles repeated Hello baseline snapshots (without
+breaking Ack/Welcome retries) and enforces travel limits using the receiving
+server's clock, never sender-controlled elapsed time. Movement packets are
+validated both in the wire decoder and at the peer registry boundary.
+Deterministic malformed-packet and real UDP retry tests run in CI. See
+[NETWORK_HARDENING.md](docs/NETWORK_HARDENING.md) for test commands,
+limitations and required authentication before any online multiplayer.
