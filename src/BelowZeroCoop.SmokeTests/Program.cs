@@ -142,5 +142,34 @@ catch (ArgumentOutOfRangeException)
     invalidRejected = true;
 }
 Check(invalidRejected, "movement encode enforces world bounds");
+// Upstream #83: deterministic malformed traffic must never throw, allocate
+// unbounded state or accidentally be accepted as a valid control/movement
+// datagram. Force an invalid magic byte in each generated sample so the
+// expected behavior is independent of random coincidence.
+var malformedRandom = new Random(8300);
+for (int i = 0; i < 4096; ++i)
+{
+    byte[] payload = new byte[malformedRandom.Next(0, 65)];
+    malformedRandom.NextBytes(payload);
+    if (payload.Length > 0)
+        payload[0] = (byte)'X';
+    Check(!PacketCodec.TryDecode(payload, out _),
+          "fuzzed malformed control rejected");
+    Check(!MovementWireCodec.TryDecode(payload, out _),
+          "fuzzed malformed movement rejected");
+}
+
+// Even a well-formed header with a poisoned numeric payload must not pass.
+var invalidPosition = (byte[])binary.Clone();
+var invalidFloat = BitConverter.GetBytes(float.NaN);
+Array.Copy(invalidFloat, 0, invalidPosition, 22, invalidFloat.Length);
+Check(!MovementWireCodec.TryDecode(invalidPosition, out _),
+      "nonfinite movement payload rejected after header parsing");
+var invalidTimestamp = (byte[])binary.Clone();
+var invalidDouble = BitConverter.GetBytes(double.PositiveInfinity);
+Array.Copy(invalidDouble, 0, invalidTimestamp, 14, invalidDouble.Length);
+Check(!MovementWireCodec.TryDecode(invalidTimestamp, out _),
+      "nonfinite timestamp rejected after header parsing");
+
 NetworkImpairmentTests.Run();
 Console.WriteLine("Protocol, movement, interpolation and impaired-network smoke tests passed.");
