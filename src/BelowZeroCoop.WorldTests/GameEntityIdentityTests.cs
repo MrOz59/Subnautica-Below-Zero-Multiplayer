@@ -160,9 +160,45 @@ internal static class GameEntityIdentityTests
                 Check(!reopened.TryFindGameEntity("new:unseen", out _),
                     "rejected identity remains absent after restart");
                 long before = reopened.Snapshot().Construction.Revision;
-                var removed = reopened.Remove(Guid.NewGuid(), before, entityId,
-                    1, false, Nobody, 1000);
-                Check(removed.Applied, "original construction can be deleted");
+                long beforeAggregate = reopened.Snapshot().Revision;
+                foreach (var origin in new[]
+                {
+                    ConstructionEventProvenance.Unknown,
+                    ConstructionEventProvenance.SaveLoading,
+                    ConstructionEventProvenance.RemoteReplay,
+                    ConstructionEventProvenance.VerifiedLocalBuild
+                })
+                {
+                    var prevented = reopened.RemoveObserved(Guid.NewGuid(),
+                        before, "piece:101", 1, false, Nobody, 1000, origin);
+                    Check(!prevented.Applied &&
+                          prevented.Reason == "origin_unverified",
+                          "unverified or incorrect event origin cannot destroy construction");
+                }
+                Check(reopened.RemoveObserved(Guid.NewGuid(), before,
+                    "missing:piece", 1, false, Nobody, 1000,
+                    ConstructionEventProvenance.VerifiedLocalRemoval).Reason ==
+                    "unknown_game_id", "unbound game ID cannot delete anything");
+                Check(reopened.RemoveObserved(Guid.NewGuid(), before,
+                    "bad\\nuid", 1, false, Nobody, 1000,
+                    ConstructionEventProvenance.VerifiedLocalRemoval).Reason ==
+                    "invalid_game_id", "malformed source identifier rejected");
+                Check(reopened.Snapshot().Revision == beforeAggregate &&
+                      reopened.Snapshot().GameIds.Entries.Count == 1,
+                    "failed removals leave map and world revisions unchanged");
+
+                Guid removalOperation = Guid.NewGuid();
+                var removed = reopened.RemoveObserved(removalOperation,
+                    before, "piece:101", 1, false, Nobody, 1000,
+                    ConstructionEventProvenance.VerifiedLocalRemoval);
+                Check(removed.Applied && removed.RemovedCount == 1,
+                    "verified removal resolves persistent ID to correct server entity");
+                var replay = reopened.RemoveObserved(removalOperation, before,
+                    "piece:101", 1, false, Nobody, 1000,
+                    ConstructionEventProvenance.VerifiedLocalRemoval);
+                Check(replay.Applied && replay.Duplicate &&
+                      reopened.Snapshot().GameIds.Entries.Count == 1,
+                    "repeated teardown is idempotent and retains mapping");
                 var rebuilt = reopened.PlaceObserved(Guid.NewGuid(),
                     reopened.Snapshot().Construction.Revision, "piece:101",
                     2, "Room", At(2), Nobody,
