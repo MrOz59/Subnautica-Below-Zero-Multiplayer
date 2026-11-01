@@ -59,4 +59,27 @@ Check(sessions.TryGet(endpoint, pingAt, out _), "ping accepted");
 Check(peer.LastSeenUtc == pingAt, "ping refreshes liveness");
 Check(sessions.Prune(pingAt.AddSeconds(20)).Count == 0,
     "recently active peer remains connected");
+// Client-reported elapsed time may never override actual server elapsed time.
+// Previously a 100-second sender timestamp jump granted 62m of movement
+// even if only ~50ms had passed on the receiving host.
+var speedSessions = new PeerRegistry();
+var speedEndpoint = new IPEndPoint(IPAddress.Loopback, 45124);
+Check(speedSessions.TryHello(speedEndpoint, start, out Peer speedPeer),
+    "movement sender joined");
+Check(speedSessions.TryAcceptMovement(speedEndpoint,
+    new MovementDatagram(1, 0, 1.0, 0, 0, 0),
+    start, out _), "initial movement accepted");
+DateTime shortGap = start.AddMilliseconds(50);
+Check(!speedSessions.TryAcceptMovement(speedEndpoint,
+    new MovementDatagram(2, 0, 101.0, 50, 0, 0),
+    shortGap, out _), "forged sender clock cannot authorize a 50m jump");
+Check(speedPeer.LastSequence == 1 && speedPeer.LastSeenUtc == start,
+    "speed rejection cannot poison movement sequence or session liveness");
+Check(speedSessions.TryAcceptMovement(speedEndpoint,
+    new MovementDatagram(2, 0, 1.05, 2, 0, 0),
+    shortGap.AddMilliseconds(25), out _),
+    "legitimate small movement still accepted after rejected jump");
+Check(speedPeer.LastSequence == 2,
+    "rejected jump does not block future valid snapshots");
+
 Console.WriteLine("Peer liveness regression tests passed.");
