@@ -163,7 +163,7 @@ using (var observer = new BuildingHookObserver())
         using (ConstructionObservationContext.Suppress(
             ConstructionObservationContext.SuppressionReason.RemoteReplay))
         {
-            ghost.Finish();
+            new BaseGhost().Finish();
             Require(ConstructionObservationContext.IsSuppressed,
                 "nested replay boundary remains suppressed");
         }
@@ -174,6 +174,7 @@ using (var observer = new BuildingHookObserver())
     }
     Require(!ConstructionObservationContext.IsSuppressed,
         "scope disposal restores callback visibility");
+    building.gameObject.transform.position = new UnityEngine.Vector3(14, 3, -8);
     Require(building.Construct() && observer.Drain(16).Count == 1,
         "normal observations resume once all suppression scopes exit");
 
