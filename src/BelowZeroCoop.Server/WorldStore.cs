@@ -9,6 +9,7 @@ namespace BelowZeroCoop.Server;
 /// </summary>
 internal static class WorldStore
 {
+    private const int MaxSnapshotBytes = 64 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,
@@ -27,6 +28,10 @@ internal static class WorldStore
         Directory.CreateDirectory(directory);
         string temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
         byte[] content = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(state.Snapshot(), Json));
+        // A snapshot too large to load must never be committed to disk.
+        // Check before copying backups or replacing the last valid primary.
+        if (content.Length > MaxSnapshotBytes)
+            throw new InvalidDataException("World snapshot exceeds the safety limit.");
 
         try
         {
@@ -65,7 +70,7 @@ internal static class WorldStore
         try
         {
             using FileStream stream = File.OpenRead(fullPath);
-            if (stream.Length > 64L * 1024 * 1024)
+            if (stream.Length > MaxSnapshotBytes)
                 throw new InvalidDataException("World snapshot exceeds the safety limit.");
 
             // A syntactically valid '{}' or truncated-but-valid JSON object
