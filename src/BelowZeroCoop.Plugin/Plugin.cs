@@ -27,6 +27,7 @@ namespace BelowZeroCoop.Plugin
         private ConfigEntry<bool> observeDeconstructionHooks;
         private BuildingHookObserver buildingObserver;
         private int lastDroppedBuildingEvents;
+        private bool inGameSceneObserved;
         private ConfigEntry<bool> enableMovementPreview;
         private readonly MovementPreview movementPreview = new MovementPreview();
         private bool previewActive;
@@ -70,6 +71,14 @@ namespace BelowZeroCoop.Plugin
                 "UDP port of the development server.");
 
             Logger.LogInfo("BelowZeroCoop loaded. No playable multiplayer features yet.");
+            Logger.LogInfo("[GameTest] Startup: hookScan=" +
+                scanGameHooksOnStartup.Value +
+                " builds=" + observeBuildingHooks.Value +
+                " deconstruction=" + observeDeconstructionHooks.Value +
+                " udp=" + enableProbe.Value +
+                " movementPreview=" + enableMovementPreview.Value);
+            if (!enableProbe.Value)
+                Logger.LogInfo("[GameTest] Offline-only diagnostics: no network session requested.");
             if (scanGameHooksOnStartup.Value)
             {
                 // Only the actual game's Assembly-CSharp may satisfy a hook
@@ -145,6 +154,15 @@ namespace BelowZeroCoop.Plugin
 
         private void Update()
         {
+            // Log first playable-scene detection once. This makes it possible
+            // to distinguish BepInEx plugin loading from reaching the game
+            // itself, without mutating a native save or creating any objects.
+            if (!inGameSceneObserved && global::Player.main != null)
+            {
+                inGameSceneObserved = true;
+                Logger.LogInfo("[GameTest] Player.main available; in-game lifecycle reached.");
+            }
+
             // Handle diagnostic events on Unity's main thread and keep a
             // strict per-frame budget, completely separate from the UDP probe.
             if (buildingObserver != null)
