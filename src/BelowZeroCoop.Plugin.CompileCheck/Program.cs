@@ -202,8 +202,10 @@ using (var observer = new BuildingHookObserver())
             placed.Game.Origin == "unknown" &&
             placed.Game.CompletionEvidence == "finish_returned_candidate",
             "placed-piece candidate uses enclosing construction ID, never temporary ghost ID");
-    ghost.ParentPiece = null;
-    ghost.Finish();
+    var ghostWithoutParent = new BaseGhost { TargetBase = parent };
+    ghostWithoutParent.gameObject.SetComponent(
+        new UniqueIdentifier { Id = "another-temporary-ghost" });
+    ghostWithoutParent.Finish();
     Require(observer.Drain(16).Single().Game.ObservedObjectId == null,
             "missing parent-piece identity does not fall back to misleading ghost UID");
 
