@@ -13,6 +13,22 @@ var endpoint = new IPEndPoint(IPAddress.Loopback, 45123);
 Check(sessions.TryHello(endpoint, start, out Peer peer), "join");
 Check(peer.LastSeenUtc == start, "initial activity timestamp");
 
+// A duplicate Hello must not trigger unbounded full baseline resends,
+// but a later retry may recover missing packets.
+Check(sessions.TryBeginBaseline(peer, start), "first baseline allowed");
+Check(!sessions.TryBeginBaseline(peer, start.AddMilliseconds(100)),
+    "immediate duplicate Hello cannot resend baseline");
+Check(!sessions.TryBeginBaseline(peer,
+    start.AddMilliseconds(PeerRegistry.BaselineResendInterval.TotalMilliseconds - 1)),
+    "baseline retry before cooldown blocked");
+Check(sessions.TryBeginBaseline(peer, start + PeerRegistry.BaselineResendInterval),
+    "baseline can recover after cooldown");
+Check(!sessions.TryBeginBaseline(peer, start.AddMilliseconds(50)),
+    "clock rollback cannot reopen baseline window");
+var unregistered = new Peer(777, endpoint, start);
+Check(!sessions.TryBeginBaseline(unregistered, start.AddMinutes(1)),
+    "unregistered or replaced peer cannot request baseline");
+
 // Rejected client-supplied peer IDs must not renew the session.
 Check(!sessions.TryAcceptMovement(endpoint,
     new MovementDatagram(1, peer.Id, 1.0, 0, 0, 0),
