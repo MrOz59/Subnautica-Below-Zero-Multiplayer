@@ -112,8 +112,16 @@ internal static class Program
                             new Packet(PacketType.HelloAck, packet.Sequence), shutdown.Token))
                         continue;
 
-                    await SendControl(server, message.RemoteEndPoint,
-                        new Packet(PacketType.Welcome, joining.Id), shutdown.Token);
+                    if (!await SendControl(server, message.RemoteEndPoint,
+                            new Packet(PacketType.Welcome, joining.Id), shutdown.Token))
+                        continue;
+
+                    // A Hello retry still gets ACK and Welcome, but cannot
+                    // amplify into an unbounded stream of full snapshots.
+                    // Retrying after the cooldown permits baseline recovery
+                    // if the first datagrams were lost.
+                    if (!sessions.TryBeginBaseline(joining, now))
+                        continue;
 
                     // A late joiner gets an immediate one-frame baseline for
                     // existing peers. Normal streaming continues at ~20 Hz.
