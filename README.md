@@ -37,6 +37,31 @@ inventory, saves, authentication, real player spawning, authoritative gameplay,
 discovery, automatic BepInEx downloads, Epic launching or production security.
 Remote capsules are temporary debug geometry, not true multiplayer characters.
 
+## First in-game test (singleplayer; no multiplayer server needed)
+
+After manually installing **Windows x64 BepInEx 5** in your legitimate
+Windows/Steam-Proton Below Zero game and installing the .NET SDK, run:
+
+```sh
+python3 launcher/launcher.py prepare-test --game-dir "/path/to/SubnauticaZero"
+```
+
+On Windows use `py -3` instead of `python3`. This builds the real plugin
+from your installed game assemblies, installs our two DLLs with backups,
+enables read-only game-hook signature scanning, and disables all UDP probes,
+movement previews and Harmony observers by default. Launch the game from
+Steam, enter a test world, then collect diagnostics:
+
+```sh
+python3 launcher/launcher.py test-report --game-dir "/path/to/SubnauticaZero"
+```
+
+The launcher GUI also has **Prepare solo test** and **Test log** controls.
+For optional passive construction hooks, rerun preparation with
+`--no-build --observe-builds`, or add `--observe-deconstruction` after
+successful basic testing. **This is not playable multiplayer.** See
+[the full Windows/Proton in-game smoke-test guide](docs/GAME_TEST.md).
+
 ## Quick start - Linux (Steam/Proton)
 
 1. Own/install Subnautica: Below Zero through Steam (appid 848450).
