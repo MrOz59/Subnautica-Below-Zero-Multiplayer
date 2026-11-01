@@ -141,6 +141,42 @@ using (var observer = new BuildingHookObserver())
             complete.Game.ConstructedAmount == 1d,
             "same game ID and transformed metadata on candidate completion");
 
+    Require(building.Construct(), "repeated vanilla construction still executes");
+    Require(observer.Drain(16).Count == 0 &&
+            observer.SuppressedDuplicateCount == 1,
+            "identical rapid method returns coalesce only diagnostic records");
+    building.constructedAmount = 0.98f;
+    Require(building.Construct() && observer.Drain(16).Count == 1,
+            "real progress change is never swallowed by telemetry coalescing");
+    building.constructedAmount = 1f;
+    building.gameObject.transform.position = new UnityEngine.Vector3(13, 3, -8);
+    Require(building.Construct(), "changed position still executes");
+    Require(observer.Drain(16).Single().Game.WorldTransform.X == 13,
+            "changed transforms are not mistaken for duplicated telemetry");
+
+    using (ConstructionObservationContext.Suppress(
+        ConstructionObservationContext.SuppressionReason.SaveRestore))
+    {
+        Require(ConstructionObservationContext.IsSuppressed,
+            "save loading boundary suppresses diagnostic observation");
+        building.Construct();
+        using (ConstructionObservationContext.Suppress(
+            ConstructionObservationContext.SuppressionReason.RemoteReplay))
+        {
+            ghost.Finish();
+            Require(ConstructionObservationContext.IsSuppressed,
+                "nested replay boundary remains suppressed");
+        }
+        Require(ConstructionObservationContext.IsSuppressed,
+            "disposing nested replay leaves enclosing save scope active");
+        Require(observer.Drain(16).Count == 0,
+            "no callbacks emitted during scoped save load or remote replay");
+    }
+    Require(!ConstructionObservationContext.IsSuppressed,
+        "scope disposal restores callback visibility");
+    Require(building.Construct() && observer.Drain(16).Count == 1,
+        "normal observations resume once all suppression scopes exit");
+
     var parent = new FakeBaseOwner();
     parent.gameObject.SetComponent(new UniqueIdentifier { Id = "base-owner-500" });
     var ghost = new BaseGhost { TargetBase = parent };

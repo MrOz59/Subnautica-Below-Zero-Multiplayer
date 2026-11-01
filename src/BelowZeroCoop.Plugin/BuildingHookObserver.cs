@@ -60,7 +60,11 @@ namespace BelowZeroCoop.Plugin
         private readonly Queue<Observation> pending = new Queue<Observation>();
         private readonly List<MethodBase> installed = new List<MethodBase>();
         private readonly Harmony harmony = new Harmony(HarmonyOwner);
+        private readonly ConstructionObservationDeduplicator deduplicator =
+            new ConstructionObservationDeduplicator();
+        [ThreadStatic] private static int callbackDepth;
         private int dropped;
+        private int duplicateObservations;
         private bool disposed;
 
         internal int InstalledCount
@@ -71,6 +75,11 @@ namespace BelowZeroCoop.Plugin
         internal int DroppedCount
         {
             get { lock (gate) return dropped; }
+        }
+
+        internal int SuppressedDuplicateCount
+        {
+            get { lock (gate) return duplicateObservations; }
         }
 
         private static readonly MethodInfo ConstructCallback =
@@ -188,8 +197,16 @@ namespace BelowZeroCoop.Plugin
                 BuildingHookObserver receiver;
                 lock (ActiveGate)
                     receiver = active;
-                if (receiver == null || instance == null)
+                if (receiver == null || instance == null ||
+                    ConstructionObservationContext.IsSuppressed ||
+                    callbackDepth != 0)
                     return;
+
+                // Never allow reflective Unity access to recursively create
+                // another observation on the same callback thread.
+                callbackDepth++;
+                try
+                {
 
                 // RuntimeHelpers token is process-local and NOT an entity UUID.
                 // Never use it as a persistent or network identity.
@@ -206,12 +223,22 @@ namespace BelowZeroCoop.Plugin
                 {
                     if (receiver.disposed)
                         return;
+                    if (!receiver.deduplicator.ShouldRecord(observation))
+                    {
+                        receiver.duplicateObservations++;
+                        return;
+                    }
                     if (receiver.pending.Count >= MaxPending)
                     {
                         receiver.pending.Dequeue();
                         receiver.dropped++;
                     }
                     receiver.pending.Enqueue(observation);
+                }
+                }
+                finally
+                {
+                    callbackDepth--;
                 }
             }
             catch
@@ -261,6 +288,7 @@ namespace BelowZeroCoop.Plugin
             lock (gate)
             {
                 pending.Clear();
+                deduplicator.Clear();
                 disposed = true;
             }
         }
