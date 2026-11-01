@@ -328,3 +328,28 @@ inspection cannot recursively enqueue another observation. Exceptions in
 this diagnostic path are contained and do not interrupt the vanilla game.
 Fake Unity tests cover nesting, callback resumption, progress/transform
 changes, duplicate-window expiry and scope isolation.
+
+
+## Deconstruction lifecycle evidence (independent, offline)
+
+`src/BelowZeroCoop.Plugin/DeconstructionEvidenceTracker.cs` provides a
+bounded, expiring, generation-aware *in-memory diagnostic state machine*.
+It differentiates Request -> Progress -> VerifiedAbsent. A requested
+deconstruction, coroutine entry, and method return are **not** proof
+that the persistent object has been removed. Cancelled attempts discard
+their evidence; late updates targeting an old generation are rejected.
+Confirmation is idempotent and is never translated to UDP traffic,
+world tombstones, or native save changes.
+
+The `ConfirmAbsent` API is intentionally a trust boundary: a future
+game adapter must verify persistent game object absence, the stable
+game UID, source and generation against the actual Below Zero game
+assemblies before calling it. This class is **not wired into Harmony
+callbacks** and cannot currently establish that absence on its own.
+Do not call it directly from `BaseDeconstructable.Deconstruct` or
+`ProgressDeconstruction` merely because those methods returned.
+
+Regression tests run with
+`dotnet run --project src/BelowZeroCoop.DeconstructionTests -c Release`;
+they simulate cancellation, retries, replay, rebuild and expiry without
+booting Unity. They do not validate installed game signatures.
