@@ -83,7 +83,11 @@ namespace BelowZeroCoop.Protocol
             return true;
         }
 
-        private static bool IsValid(MovementDatagram sample)
+        /// <summary>
+        /// Verify packet bounds even when a caller bypasses the binary
+        /// decoder (for example, direct server-domain or gameplay tests).
+        /// </summary>
+        public static bool IsValid(MovementDatagram sample)
         {
             return sample.Sequence != 0 &&
                    !double.IsNaN(sample.SentAt) && !double.IsInfinity(sample.SentAt) &&
