@@ -270,13 +270,26 @@ def prepare_game_test(game_dir: Path, *, build: bool = True,
         plugin, protocol = build_game_plugin(game_dir, PROJECT_ROOT)
     else:
         plugin, protocol = DEFAULT_PLUGIN, DEFAULT_PROTOCOL
-    # The installer validates the existing BepInEx loader and either commits
-    # both assemblies or restores previous versions on failure.
-    results = install_plugin(game_dir, plugin, protocol, force=True)
-    results += configure_solo_test(
+    # Validate everything before mutating the game directory.
+    required = (
+        plugin, protocol,
+        game_dir / "BepInEx" / "core" / "BepInEx.dll",
+        game_dir / "winhttp.dll",
+    )
+    missing = [str(item) for item in required if not item.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            "Missing test prerequisites; installation unchanged:\n" +
+            "\n".join(missing)
+        )
+    # Disable pre-existing network settings FIRST. If installation later
+    # fails, the old plugin cannot accidentally retain an enabled probe.
+    results = configure_solo_test(
         game_dir, observe_builds=observe_builds,
         observe_deconstruction=observe_deconstruction,
     )
+    # The installer commits both DLLs or restores their previous versions.
+    results += install_plugin(game_dir, plugin, protocol, force=True)
     diagnostic, ok = doctor(game_dir)
     results += diagnostic
     if not ok:
