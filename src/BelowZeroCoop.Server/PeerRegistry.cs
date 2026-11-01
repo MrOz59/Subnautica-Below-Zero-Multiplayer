@@ -96,16 +96,16 @@ internal sealed class PeerRegistry
             if (elapsed < MinMovementIntervalSeconds)
                 return false;
 
-            double senderElapsed = packet.SentAt - sender.LastSentTime;
-            // Large unexplained jumps are discarded; legit teleports require
-            // an authenticated gameplay event in a future protocol revision.
-            double dx = packet.X - sender.LastX;
-            double dy = packet.Y - sender.LastY;
-            double dz = packet.Z - sender.LastZ;
+            // The sender timestamp establishes ordering only. It is NOT
+            // an authority for travel distance: a client can forge a huge
+            // clock delta in consecutive 25 ms packets. Use actual time
+            // observed by the server with a bounded jitter grace period.
+            // Teleports will require a separately authorized game event.
+            double dx = (double)packet.X - sender.LastX;
+            double dy = (double)packet.Y - sender.LastY;
+            double dz = (double)packet.Z - sender.LastZ;
             double distanceSquared = dx * dx + dy * dy + dz * dz;
-            // Do not let a malicious or broken sender claim hours of elapsed
-            // time to bypass the per-snapshot maximum travel distance.
-            double boundedInterval = Math.Min(1.0, Math.Max(senderElapsed, elapsed));
+            double boundedInterval = Math.Min(0.5, Math.Max(0.0, elapsed));
             double maxDistance = MaxMovementSpeed * boundedInterval + 2.0;
             if (distanceSquared > maxDistance * maxDistance)
                 return false;
