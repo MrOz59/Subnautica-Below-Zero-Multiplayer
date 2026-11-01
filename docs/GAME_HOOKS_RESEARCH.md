@@ -353,3 +353,47 @@ Regression tests run with
 `dotnet run --project src/BelowZeroCoop.DeconstructionTests -c Release`;
 they simulate cancellation, retries, replay, rebuild and expiry without
 booting Unity. They do not validate installed game signatures.
+
+
+## Optional passive deconstruction return hooks (experimental)
+
+The plugin can now independently enable two additional **Postfix-only**
+observers from `BuildingHookObserver.DeconstructionTargets()`:
+
+- `BaseDeconstructable.Deconstruct` -> `deconstruct_method_returned`
+- `Constructable.DeconstructAsync` -> `deconstruct_async_method_returned`
+
+These target names are interoperability facts from original patch declarations,
+not reused patch implementations. Only uniquely resolved declared instance
+methods from loaded `Assembly-CSharp` may be patched; missing and overloaded
+methods are skipped. Neither callback changes arguments, return values,
+coroutines, game state, persistence, or UDP traffic.
+
+Configure independently from construction observation:
+
+```ini
+[Development]
+ObserveBuildingHooks = false
+ObserveDeconstructionHooks = true
+ScanGameHooksOnStartup = true
+```
+
+All three options default to false. The deconstruction option writes local
+`[BuildObserve]` diagnostics with candidate object UID, transform and
+`CompletionEvidence` set to **unverified**. In particular, returning an
+`IEnumerator` from `DeconstructAsync` means only that a coroutine object
+was created; it does not mean that the iterator has run, completed, or
+successfully removed a persistent entity. A `Deconstruct` method return
+is likewise insufficient proof.
+
+The standalone `DeconstructionEvidenceTracker` intentionally remains
+unconnected to these callbacks: actual game-origin identity, a trusted
+generation and confirmed persistent absence are unavailable. Passing an
+assumed generation or treating method return as `ConfirmAbsent` would
+reintroduce false deletions. Integrate only after validating actual game
+assemblies and determining a trustworthy completion/absence check.
+
+`BelowZeroCoop.Plugin.CompileCheck` exercises opt-in installation, correct
+callback labels, object UID capture, unchanged original method execution,
+no implicit object destruction and cleanup against fake APIs. These stubs
+are not evidence of compatibility with the installed game.
