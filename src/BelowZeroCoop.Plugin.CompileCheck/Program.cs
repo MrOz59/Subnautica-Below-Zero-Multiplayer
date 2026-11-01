@@ -226,6 +226,38 @@ using (var observer = new BuildingHookObserver())
     Require(observer.Drain(512).Count == 32,
         "drain is limited to a strict main-thread frame budget");
 }
+// Duplicate coalescing is a telemetry optimization only. Repeated actual
+// game methods always execute, and a new observation remains recordable
+// after the short window expires.
+var filter = new ConstructionObservationDeduplicator();
+var sampleGame = ConstructionGameSnapshotProbe.Capture(
+    "construct_method_returned", new Constructable
+    {
+        techType = "Room", constructedAmount = 1f
+    });
+DateTime sampleAt = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+BuildingHookObserver.Observation SampleAt(int milliseconds) =>
+    new BuildingHookObserver.Observation("construct_method_returned",
+        "Constructable", 424242, sampleAt.AddMilliseconds(milliseconds), sampleGame);
+Require(filter.ShouldRecord(SampleAt(0)) &&
+        !filter.ShouldRecord(SampleAt(200)) &&
+        filter.ShouldRecord(SampleAt(251)),
+        "exact repeated diagnostic event coalesces only during bounded time window");
+filter.Clear();
+Require(filter.ShouldRecord(SampleAt(0)),
+        "filter cleanup restores fresh telemetry state");
+
+using (ConstructionObservationContext.Suppress(
+    ConstructionObservationContext.SuppressionReason.SaveRestore))
+{
+    bool otherThreadSuppressed = System.Threading.Tasks.Task.Run(
+        () => ConstructionObservationContext.IsSuppressed).GetAwaiter().GetResult();
+    Require(!otherThreadSuppressed && ConstructionObservationContext.IsSuppressed,
+        "save/replay context remains thread-local and cannot be mistaken for global provenance");
+}
+Require(!ConstructionObservationContext.IsSuppressed,
+    "exception-free scope disposal never leaks suppression to future actions");
+
 Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
         "plugin shutdown unregisters only its Harmony callbacks");
 new Constructable().Construct();
