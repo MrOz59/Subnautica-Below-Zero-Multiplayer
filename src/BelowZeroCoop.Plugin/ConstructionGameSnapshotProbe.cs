@@ -114,6 +114,10 @@ namespace BelowZeroCoop.Plugin
                         : "progress_unknown";
                 else if (eventName == "base_ghost_finish_returned")
                     stage = "finish_returned_candidate";
+                else if (eventName == "deconstruct_method_returned")
+                    stage = "deconstruct_returned_unverified";
+                else if (eventName == "deconstruct_async_method_returned")
+                    stage = "async_method_returned_not_coroutine_completion";
 
                 return new Snapshot(uniqueId, baseId, source, tech, amount,
                     ReadTransform(transform, false), ReadTransform(transform, true),
