@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using BepInEx;
@@ -23,6 +24,7 @@ namespace BelowZeroCoop.Plugin
         private ConfigEntry<bool> enableProbe;
         private ConfigEntry<bool> scanGameHooksOnStartup;
         private ConfigEntry<bool> observeBuildingHooks;
+        private ConfigEntry<bool> observeDeconstructionHooks;
         private BuildingHookObserver buildingObserver;
         private int lastDroppedBuildingEvents;
         private ConfigEntry<bool> enableMovementPreview;
@@ -58,6 +60,8 @@ namespace BelowZeroCoop.Plugin
                 "Read-only inspection of game method names. Logs status; never patches gameplay.");
             observeBuildingHooks = Config.Bind("Development", "ObserveBuildingHooks", false,
                 "Install passive Harmony construction callbacks. Local logs only; never changes game/world/network.");
+            observeDeconstructionHooks = Config.Bind("Development", "ObserveDeconstructionHooks", false,
+                "Observe deconstruction method returns only. No proof of removal, persistence or networking.");
             enableMovementPreview = Config.Bind("Development", "EnableMovementPreview", false,
                 "Enable sending local position and rendering temporary peer capsules. LAN debug only.");
             serverHost = Config.Bind("Network", "Host", "127.0.0.1",
@@ -94,7 +98,7 @@ namespace BelowZeroCoop.Plugin
                     " unavailable. No game methods were patched.");
             }
 
-            if (observeBuildingHooks.Value)
+            if (observeBuildingHooks.Value || observeDeconstructionHooks.Value)
             {
                 // Do not install anything unless the real game assembly is
                 // present. The catalog may still show missing/ambiguous hooks.
@@ -110,16 +114,20 @@ namespace BelowZeroCoop.Plugin
                     try
                     {
                         buildingObserver = new BuildingHookObserver();
+                        var targets = new List<BuildingHookObserver.Candidate>();
+                        if (observeBuildingHooks.Value)
+                            targets.AddRange(BuildingHookObserver.DefaultTargets());
+                        if (observeDeconstructionHooks.Value)
+                            targets.AddRange(BuildingHookObserver.DeconstructionTargets());
                         int installed = buildingObserver.Install(gameAssembly,
-                            BuildingHookObserver.DefaultTargets(),
-                            line => Logger.LogInfo("[BuildObserve] " + line));
+                            targets, line => Logger.LogInfo("[BuildObserve] " + line));
                         if (installed == 0)
                         {
                             buildingObserver.Dispose();
                             buildingObserver = null;
                         }
                         Logger.LogInfo("[BuildObserve] " + installed +
-                            " passive construction callbacks active. No gameplay replication.");
+                            " passive construction/deconstruction callbacks active. No gameplay replication.");
                     }
                     catch (Exception ex)
                     {
