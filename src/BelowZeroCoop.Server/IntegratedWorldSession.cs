@@ -213,6 +213,38 @@ internal sealed class IntegratedWorldSession : IDisposable
         }
     }
 
+    /// <summary>
+    /// Symmetric trusted-host teardown by the original game ID. A passive
+    /// Harmony observation does NOT qualify as verified local removal.
+    /// Unknown IDs, save loading and remote replay never create a binding
+    /// or delete an entity. This is not exposed to the UDP debug server.
+    /// </summary>
+    public IntegratedRemovalResult RemoveObserved(Guid operationId,
+        long expectedConstructionRevision, string gameId, int generation,
+        bool cascade, IReadOnlyCollection<ConstructionBounds> trustedPlayers,
+        long hostMonotonicMs, ConstructionEventProvenance provenance,
+        DateTime? hostUtc = null)
+    {
+        lock (gate)
+        {
+            EnsureOpen();
+            if (provenance != ConstructionEventProvenance.VerifiedLocalRemoval)
+                return IntegratedRemovalResult.Fail("origin_unverified");
+            if (!GameEntityIdentityMap.ValidId(gameId))
+                return IntegratedRemovalResult.Fail("invalid_game_id");
+
+            var identities = GameEntityIdentityMap.Restore(
+                document.GameIds, document.Power.GridId);
+            if (!identities.TryFind(gameId, out Guid entityId))
+                return IntegratedRemovalResult.Fail("unknown_game_id");
+
+            // Monitor reentrancy is intentional: the same lock protects
+            // identity lookup and the complete four-domain removal.
+            return Remove(operationId, expectedConstructionRevision, entityId,
+                generation, cascade, trustedPlayers, hostMonotonicMs, hostUtc);
+        }
+    }
+
     public ConstructionResult Connect(Guid operationId, long revision,
         Guid a, int generationA, Guid b, int generationB, ConstructionLinkKind kind)
     {
@@ -616,5 +648,6 @@ internal enum ConstructionEventProvenance
     Unknown = 0,
     SaveLoading = 1,
     RemoteReplay = 2,
-    VerifiedLocalBuild = 3
+    VerifiedLocalBuild = 3,
+    VerifiedLocalRemoval = 4
 }
