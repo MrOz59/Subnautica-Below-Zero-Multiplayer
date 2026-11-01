@@ -83,6 +83,13 @@ Require(hooks.Count == 4 && hooks[0].Status == GameHookCatalog.ProbeStatus.Found
         hooks[2].Status == GameHookCatalog.ProbeStatus.MethodMissing &&
         hooks[3].Status == GameHookCatalog.ProbeStatus.TypeMissing,
         "hook diagnostics distinguish found, overloaded and missing game methods");
+Require(hooks[0].Detail.Contains("instance ") &&
+        hooks[0].Detail.Contains("GameHookProbeFixture.Present("),
+        "unique hook includes declaring type, phase and argument signature");
+Require(hooks[1].Detail.Contains("overloads; do not auto-patch") &&
+        hooks[1].Detail.Contains("GameHookProbeFixture.Overloaded(") &&
+        hooks[1].Detail.Contains(" | "),
+        "ambiguous hook lists candidate signatures for manual verification");
 Require(GameHookCatalog.Targets.Count >= 30,
         "hook catalog covers core world, inventory and construction targets");
 Require(GameHookProbeFixture.InvokedCount == 0,
