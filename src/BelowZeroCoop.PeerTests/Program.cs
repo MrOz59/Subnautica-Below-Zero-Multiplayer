@@ -81,5 +81,24 @@ Check(speedSessions.TryAcceptMovement(speedEndpoint,
     "legitimate small movement still accepted after rejected jump");
 Check(speedPeer.LastSequence == 2,
     "rejected jump does not block future valid snapshots");
+DateTime beforeInvalid = speedPeer.LastSeenUtc;
+Check(!speedSessions.TryAcceptMovement(speedEndpoint,
+    new MovementDatagram(3, 0, double.NaN, 3, 0, 0),
+    beforeInvalid.AddSeconds(1), out _),
+    "direct nonfinite timestamp rejected");
+Check(!speedSessions.TryAcceptMovement(speedEndpoint,
+    new MovementDatagram(3, 0, 1.1, float.NaN, 0, 0),
+    beforeInvalid.AddSeconds(1), out _),
+    "direct nonfinite position rejected");
+Check(!speedSessions.TryAcceptMovement(speedEndpoint,
+    new MovementDatagram(3, 0, 1.1, MovementWireCodec.CoordinateLimit + 1, 0, 0),
+    beforeInvalid.AddSeconds(1), out _),
+    "direct out-of-bounds coordinate rejected");
+Check(!speedSessions.TryAcceptMovement(speedEndpoint,
+    new MovementDatagram(0, 0, 1.1, 0, 0, 0),
+    beforeInvalid.AddSeconds(1), out _),
+    "zero sequence rejected at domain boundary");
+Check(speedPeer.LastSequence == 2 && speedPeer.LastSeenUtc == beforeInvalid,
+    "invalid direct calls cannot poison accepted position or activity");
 
 Console.WriteLine("Peer liveness regression tests passed.");
