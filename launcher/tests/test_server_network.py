@@ -173,6 +173,29 @@ class ServerNetworkTests(unittest.TestCase):
             self.leave(sender)
             self.leave(receiver)
 
+    def test_forged_sender_clock_cannot_bypass_speed_limit(self):
+        with self.make_socket() as sender, self.make_socket() as receiver:
+            sender_id = self.join(sender, 170)
+            self.join(receiver, 171)
+            sender.send(movement(1, 0, 1.0, 0.0))
+            self.receive_matching(receiver, lambda d: len(d) == 34)
+
+            # Previously the sender-controlled delta granted up to 62m of
+            # movement on a single packet, despite a ~50ms receive gap.
+            sender.send(movement(2, 0, 101.0, 50.0))
+            with self.assertRaises(socket.timeout):
+                receiver.recv(100)
+
+            # The rejected packet must not consume the sequence; normal
+            # movement at that sequence is still accepted.
+            sender.send(movement(2, 0, 1.2, 1.0))
+            recovered = self.receive_matching(receiver, lambda d: len(d) == 34)
+            _, _, _, seq, peer_id, _, x, _, _ = struct.unpack(
+                "<4sBBIIdfff", recovered)
+            self.assertEqual((seq, peer_id, x), (2, sender_id, 1.0))
+            self.leave(sender)
+            self.leave(receiver)
+
     def test_late_join_baseline(self):
         with self.make_socket() as source, self.make_socket() as newcomer:
             sender_id = self.join(source, 200)
