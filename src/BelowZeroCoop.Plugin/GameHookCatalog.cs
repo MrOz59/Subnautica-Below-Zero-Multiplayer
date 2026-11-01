@@ -140,6 +140,19 @@ namespace BelowZeroCoop.Plugin
                 "Before", "Player enters interior/vehicle")
         };
 
+        private static string Describe(MethodInfo method)
+        {
+            string parameters = string.Join(", ", method.GetParameters()
+                .Select(p => (p.IsOut ? "out " : p.ParameterType.IsByRef ? "ref " : "") +
+                    (p.ParameterType.IsByRef
+                        ? p.ParameterType.GetElementType().FullName
+                        : p.ParameterType.FullName) + " " + p.Name));
+            return (method.IsStatic ? "static " : "instance ") +
+                method.ReturnType.FullName + " " +
+                method.DeclaringType.FullName + "." + method.Name +
+                "(" + parameters + ")";
+        }
+
         /// <summary>
         /// Probe classes/methods by reflection WITHOUT binding to game
         /// assemblies, invoking any method, or installing patches.
@@ -177,10 +190,16 @@ namespace BelowZeroCoop.Plugin
                         continue;
                     }
 
+                    // Enumerate inherited and declared candidates for diagnostics,
+                    // but never select an overload for automatic patching.
                     MethodInfo[] matches = gameType.GetMethods(
                         BindingFlags.Public | BindingFlags.NonPublic |
                         BindingFlags.Instance | BindingFlags.Static)
-                        .Where(m => m.Name == target.MethodName).ToArray();
+                        .Where(m => m.Name == target.MethodName)
+                        .OrderBy(m => m.IsStatic ? 1 : 0)
+                        .ThenBy(m => m.GetParameters().Length)
+                        .ThenBy(m => m.ToString(), StringComparer.Ordinal)
+                        .ToArray();
 
                     if (matches.Length == 0)
                     {
@@ -190,15 +209,15 @@ namespace BelowZeroCoop.Plugin
                     else if (matches.Length > 1)
                     {
                         output.Add(new Result(target, ProbeStatus.Ambiguous,
-                            matches.Length + " overloads; do not auto-patch"));
+                            matches.Length + " overloads; do not auto-patch. " +
+                            string.Join(" | ", matches.Take(8).Select(Describe)) +
+                            (matches.Length > 8 ? " | ... (truncated)" : "")));
                     }
                     else
                     {
                         MethodInfo method = matches[0];
-                        string parameters = string.Join(", ",
-                            method.GetParameters().Select(p => p.ParameterType.Name));
                         output.Add(new Result(target, ProbeStatus.Found,
-                            method.ReturnType.Name + " (" + parameters + ")"));
+                            Describe(method)));
                     }
                 }
                 catch (Exception ex)
