@@ -142,6 +142,9 @@ class SoloTestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             launcher.prepare_game_test(self.root, build=False)
         (self.game / "SubnauticaZero.exe").unlink()
+        # Keep an otherwise valid native-only installation to exercise
+        # the dedicated Windows/Proton compatibility guard.
+        (self.game / "SubnauticaZero.x86_64").write_bytes(b"native-linux-binary")
         with self.assertRaisesRegex(ValueError, "Windows"):
             launcher.prepare_game_test(self.game, build=False)
 
