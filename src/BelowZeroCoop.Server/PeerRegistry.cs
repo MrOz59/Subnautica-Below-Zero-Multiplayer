@@ -14,6 +14,7 @@ internal sealed class PeerRegistry
 
     private const double MinMovementIntervalSeconds = 0.025; // max ~40 accepted Hz
     private const double MaxMovementSpeed = 60.0; // hard cap until game-aware validation exists
+    internal static readonly TimeSpan BaselineResendInterval = TimeSpan.FromSeconds(2);
 
     private readonly Dictionary<IPEndPoint, Peer> peers = new();
     private uint nextId = 1;
@@ -40,6 +41,30 @@ internal sealed class PeerRegistry
         if (nextId == 0)
             nextId = 1;
         peers.Add(endpoint, peer);
+        return true;
+    }
+
+    /// <summary>
+    /// Rate-limit full peer snapshot retransmissions for duplicate Hello
+    /// packets. Initial join always succeeds; later retries can recover
+    /// packet loss after a bounded interval. Liveness and movement order are
+    /// not changed by the baseline gate.
+    /// </summary>
+    public bool TryBeginBaseline(Peer peer, DateTime utcNow)
+    {
+        if (peer == null ||
+            !peers.TryGetValue(peer.Endpoint, out Peer? current) ||
+            !ReferenceEquals(peer, current))
+            return false;
+
+        if (peer.LastBaselineUtc.HasValue)
+        {
+            TimeSpan elapsed = utcNow - peer.LastBaselineUtc.Value;
+            if (elapsed < BaselineResendInterval)
+                return false;
+        }
+
+        peer.LastBaselineUtc = utcNow;
         return true;
     }
 
@@ -137,6 +162,7 @@ internal sealed class Peer
     public uint LastSequence { get; set; }
     public double LastSentTime { get; set; }
     public DateTime LastMovementUtc { get; set; }
+    public DateTime? LastBaselineUtc { get; set; }
     public float LastX { get; set; }
     public float LastY { get; set; }
     public float LastZ { get; set; }
