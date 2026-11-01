@@ -8,7 +8,7 @@ var t = new DeconstructionEvidenceTracker(capacity: 2, maxAge: TimeSpan.FromSeco
 var now = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
 Check(!t.Request("", 1, now), "missing identity");
 Check(!t.Request("room-a", 0, now), "invalid generation");
-Check(!t.Request("room\\nb", 1, now), "reject control characters in UID");
+Check(!t.Request("room\nb", 1, now), "reject control characters in UID");
 Check(!t.Request(" room-b ", 1, now), "reject padded UID");
 Check(!t.ConfirmAbsent("room-a", 1, now), "no confirmation without progress");
 Check(t.Request("room-a", 1, now), "request");
