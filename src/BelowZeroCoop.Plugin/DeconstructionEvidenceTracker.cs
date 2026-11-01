@@ -43,8 +43,7 @@ namespace BelowZeroCoop.Plugin
             {
                 // Out-of-order observations may never rewind a current
                 // generation's activity time or change its phase.
-                if (generation < entry.Generation ||
-                    (generation == entry.Generation && utc < entry.UpdatedUtc))
+                if (generation < entry.Generation || utc < entry.UpdatedUtc)
                     return false;
                 if (generation == entry.Generation &&
                     entry.State == Phase.VerifiedAbsent) return false;
