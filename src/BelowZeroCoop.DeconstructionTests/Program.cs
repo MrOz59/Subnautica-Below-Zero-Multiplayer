@@ -8,6 +8,8 @@ var t = new DeconstructionEvidenceTracker(capacity: 2, maxAge: TimeSpan.FromSeco
 var now = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
 Check(!t.Request("", 1, now), "missing identity");
 Check(!t.Request("room-a", 0, now), "invalid generation");
+Check(!t.Request("room\\nb", 1, now), "reject control characters in UID");
+Check(!t.Request(" room-b ", 1, now), "reject padded UID");
 Check(!t.ConfirmAbsent("room-a", 1, now), "no confirmation without progress");
 Check(t.Request("room-a", 1, now), "request");
 Check(t.GetPhase("room-a", 1, now) == DeconstructionEvidenceTracker.Phase.Requested,
@@ -19,6 +21,11 @@ Check(t.GetPhase("room-a", 1, now.AddSeconds(2)) ==
     DeconstructionEvidenceTracker.Phase.Unknown, "cancel does not leave tombstone");
 Check(t.Request("room-a", 1, now.AddSeconds(3)), "retry");
 Check(t.Progress("room-a", 1, now.AddSeconds(4)), "retry progress");
+Check(!t.Request("room-a", 1, now.AddSeconds(3)), "stale request rejected");
+Check(!t.Request("room-a", 2, now.AddSeconds(3)), "stale newer generation rejected");
+Check(t.GetPhase("room-a", 1, now.AddSeconds(4)) ==
+    DeconstructionEvidenceTracker.Phase.Progressing,
+    "stale observations cannot rewind state or generation");
 Check(t.ConfirmAbsent("room-a", 1, now.AddSeconds(5)), "externally verified absence");
 Check(!t.ConfirmAbsent("room-a", 1, now.AddSeconds(6)), "duplicate confirmation rejected");
 Check(!t.Request("room-a", 1, now.AddSeconds(7)), "same generation cannot revive");
