@@ -105,6 +105,34 @@ class SoloTestTests(unittest.TestCase):
             launcher.prepare_game_test(self.game, build=False)
         self.assertEqual(len(list(path.parent.glob(path.name + ".*.bak"))), 1)
 
+    def test_no_prebuilt_dlls_cannot_modify_configuration(self):
+        existing = self.game / "BepInEx" / "config" / game_test.CONFIG_NAME
+        existing.parent.mkdir()
+        existing.write_text("[Network]\nEnableProbe = true\n")
+        with mock.patch.object(launcher, "DEFAULT_PLUGIN",
+                               self.root / "missing-plugin.dll"), \
+             mock.patch.object(launcher, "DEFAULT_PROTOCOL",
+                               self.root / "missing-protocol.dll"):
+            with self.assertRaises(FileNotFoundError):
+                launcher.prepare_game_test(self.game, build=False)
+        self.assertEqual(existing.read_text(), "[Network]\nEnableProbe = true\n")
+        self.assertFalse(list(existing.parent.glob("*.bak")))
+
+    def test_network_is_disabled_before_plugin_install(self):
+        config = self.game / "BepInEx" / "config" / game_test.CONFIG_NAME
+        config.parent.mkdir()
+        config.write_text("[Network]\nEnableProbe = true\n")
+        with mock.patch.object(launcher, "DEFAULT_PLUGIN",
+                               self.dlls / launcher.PLUGIN_NAME), \
+             mock.patch.object(launcher, "DEFAULT_PROTOCOL",
+                               self.dlls / launcher.PROTOCOL_NAME), \
+             mock.patch.object(launcher, "install_plugin",
+                               side_effect=OSError("simulated installer error")):
+            with self.assertRaisesRegex(OSError, "installer error"):
+                launcher.prepare_game_test(self.game, build=False)
+        self.assertIn("EnableProbe = false", config.read_text())
+        self.assertEqual(len(list(config.parent.glob("*.bak"))), 1)
+
     def test_optional_hooks_are_explicit(self):
         game_test.configure_solo_test(
             self.game, observe_builds=True, observe_deconstruction=True)
