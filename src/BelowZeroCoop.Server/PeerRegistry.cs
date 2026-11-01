@@ -83,7 +83,8 @@ internal sealed class PeerRegistry
         // A rejected or replayed movement packet must not extend the session.
         // Otherwise an inactive peer can keep an occupied slot alive forever
         // by sending malformed movement with a valid UDP endpoint.
-        if (packet.PeerId != 0 || !peers.TryGetValue(endpoint, out var sender))
+        if (packet.PeerId != 0 || !MovementWireCodec.IsValid(packet) ||
+            !peers.TryGetValue(endpoint, out var sender))
             return false;
 
         if (sender.HasMovement)
