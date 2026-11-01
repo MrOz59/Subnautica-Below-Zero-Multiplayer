@@ -8,8 +8,8 @@ using HarmonyLib;
 namespace BelowZeroCoop.Plugin
 {
     /// <summary>
-    /// Own Harmony implementation: two optional passive observers of game
-    /// construction entry points. Does not alter game return values, game
+    /// Own Harmony implementation: optional passive observers of construction
+    /// and deconstruction method returns. Does not alter game return values, game
     /// state, inventory, world saves, or network traffic.
     /// </summary>
     internal sealed class BuildingHookObserver : IDisposable
@@ -101,6 +101,26 @@ namespace BelowZeroCoop.Plugin
         }
 
         /// <summary>
+        /// Optional deconstruction diagnostics. A method return is NOT proof
+        /// of removal; especially for coroutine factories, execution may not
+        /// even have started. No native or network state may be changed.
+        /// </summary>
+        internal static Candidate[] DeconstructionTargets()
+        {
+            return new[]
+            {
+                new Candidate("BaseDeconstructable", "Deconstruct",
+                    "deconstruct_method_returned",
+                    typeof(BuildingHookObserver).GetMethod("AfterDeconstruct",
+                        BindingFlags.Static | BindingFlags.NonPublic)),
+                new Candidate("Constructable", "DeconstructAsync",
+                    "deconstruct_async_method_returned",
+                    typeof(BuildingHookObserver).GetMethod("AfterDeconstructAsync",
+                        BindingFlags.Static | BindingFlags.NonPublic))
+            };
+        }
+
+        /// <summary>
         /// The caller (Plugin) must pass only the actual loaded Assembly-CSharp.
         /// Installed targets must be unique declared instance methods.
         /// Overloads and unavailable game methods are deliberately skipped.
@@ -188,6 +208,16 @@ namespace BelowZeroCoop.Plugin
         private static void AfterBaseFinish(object __instance)
         {
             ReportFromPatch("base_ghost_finish_returned", __instance);
+        }
+
+        private static void AfterDeconstruct(object __instance)
+        {
+            ReportFromPatch("deconstruct_method_returned", __instance);
+        }
+
+        private static void AfterDeconstructAsync(object __instance)
+        {
+            ReportFromPatch("deconstruct_async_method_returned", __instance);
         }
 
         private static void ReportFromPatch(string eventName, object instance)
