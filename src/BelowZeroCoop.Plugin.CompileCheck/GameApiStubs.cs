@@ -181,6 +181,28 @@ public sealed class Constructable
             System.Reflection.MethodBase.GetCurrentMethod(), this);
         return true;
     }
+
+    public static int DeconstructAsyncCalls { get; private set; }
+    // This test method deliberately returns an enumerator without running a
+    // coroutine: return-time observation is NOT gameplay removal completion.
+    public System.Collections.IEnumerator DeconstructAsync()
+    {
+        DeconstructAsyncCalls++;
+        HarmonyLib.HarmonyFakeDispatch.After(
+            System.Reflection.MethodBase.GetCurrentMethod(), this);
+        return System.Array.Empty<object>().GetEnumerator();
+    }
+}
+public sealed class BaseDeconstructable
+{
+    public readonly UnityEngine.GameObject gameObject = new UnityEngine.GameObject();
+    public static int DeconstructCalls { get; private set; }
+    public void Deconstruct()
+    {
+        DeconstructCalls++;
+        HarmonyLib.HarmonyFakeDispatch.After(
+            System.Reflection.MethodBase.GetCurrentMethod(), this);
+    }
 }
 public sealed class FakeBaseOwner
 {
