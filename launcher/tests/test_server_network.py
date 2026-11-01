@@ -189,6 +189,38 @@ class ServerNetworkTests(unittest.TestCase):
             self.leave(source)
             self.leave(newcomer)
 
+    def test_duplicate_hello_does_not_amplify_world_baseline(self):
+        # Repeated Hello must still get Ack/Welcome, but must not force a
+        # movement snapshot flood for every retry. A later retry can recover.
+        with self.make_socket() as source, self.make_socket() as newcomer:
+            source_id = self.join(source, 240)
+            source.send(movement(1, 0, 10.0, 22.0))
+            source.send(control(1, 241))
+            self.receive_matching(source, lambda d: d == control(2, 241))
+
+            newcomer_id = self.join(newcomer, 242)
+            first = self.receive_matching(newcomer, lambda d: len(d) == 34)
+            self.assertEqual(struct.unpack("<4sBBIIdfff", first)[4], source_id)
+
+            newcomer.send(control(HELLO, 243))
+            self.receive_matching(newcomer, lambda d: d == control(HELLO_ACK, 243))
+            self.receive_matching(newcomer,
+                                  lambda d: d == control(WELCOME, newcomer_id))
+            with self.assertRaises(socket.timeout):
+                newcomer.recv(100)
+
+            # After the bounded retry interval, the sender can recover a
+            # previously lost baseline without changing its server identity.
+            time.sleep(2.05)
+            newcomer.send(control(HELLO, 244))
+            self.receive_matching(newcomer, lambda d: d == control(HELLO_ACK, 244))
+            self.receive_matching(newcomer,
+                                  lambda d: d == control(WELCOME, newcomer_id))
+            resent = self.receive_matching(newcomer, lambda d: len(d) == 34)
+            self.assertEqual(struct.unpack("<4sBBIIdfff", resent)[4], source_id)
+            self.leave(source)
+            self.leave(newcomer)
+
     def test_goodbye_notifies_and_rejects_old_endpoint(self):
         with self.make_socket() as source, self.make_socket() as observer:
             source_id = self.join(source, 300)
