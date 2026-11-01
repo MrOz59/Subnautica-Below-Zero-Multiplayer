@@ -149,3 +149,16 @@ playability until gameplay replication is implemented and tested.
       and detect genuine source/provenance from game hooks.
 - [ ] Integrate authenticated events; passive observations MUST NOT
       call `PlaceObserved` directly.
+
+## Observation protection and removal staging
+
+- [x] Bound and time-coalesce identical diagnostic construction callbacks,
+      preserving changed construction progress and transform values.
+- [x] Add explicit nestable thread-local save/replay observation suppression,
+      reentrancy protection, and independent fake-Unity regressions.
+- [x] Add fail-closed `RemoveObserved` by persistent game ID with verified
+      host provenance, generation checks and existing operation receipts.
+- [ ] Connect save/replay scope entry to verified real game lifecycle hooks,
+      including coroutine continuation boundaries.
+- [ ] Authenticate and authorize future gameplay events; observation
+      suppression is not a security control or remote-event dedupe.

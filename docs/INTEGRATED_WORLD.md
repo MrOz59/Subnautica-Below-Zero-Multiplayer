@@ -181,3 +181,19 @@ provenance before any `PlaceObserved` call can be enabled in gameplay.
 
 The game observer does **not** call `PlaceObserved`. This work only
 prepares the transaction boundary.
+
+## Game-ID removal staging
+
+`RemoveObserved` complements `PlaceObserved`: trusted-host code can
+resolve an already-bound game ID and request the normal atomic,
+generation-checked teardown by its persistent server GUID. It does **not**
+create a new identity for unknown IDs, and refuses `Unknown`,
+`SaveLoading`, `RemoteReplay` and the build-only provenance flag.
+Only the explicitly trusted `VerifiedLocalRemoval` staging mode is
+accepted. The implementation reuses the existing four-domain removal
+transaction and its operation-ID idempotency receipts.
+
+These provenance values are **not** authenticated client claims and the
+passive BepInEx observers are not allowed to call this API.
+Their origin remains unknown until real game APIs and a trusted host
+boundary can verify it. No new UDP gameplay command is enabled.

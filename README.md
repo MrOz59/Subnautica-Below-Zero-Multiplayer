@@ -187,3 +187,17 @@ development snapshots can be read and upgraded in memory. Loading/replayed
 events are explicitly rejected. The Harmony hooks still report unknown
 origin and **do not invoke this path**, so this is not live multiplayer
 construction or a change to the game's saves.
+
+## Safer construction observation (independent runtime guard)
+
+The optional Harmony diagnostic hooks now coalesce identical observations
+within a short bounded window, retain all meaningful progress/transform
+changes, and guard against recursive callbacks. Future trusted integration
+code can explicitly suppress observations inside nested save-loading,
+remote-replay or scripted-mutation scopes. These scopes are thread-local,
+not automatic game-origin detection.
+
+The trusted-host `IntegratedWorldSession.RemoveObserved` also supports
+removing an already-mapped object by its game ID after separate origin
+verification. The actual hooks still supply `origin=unknown`, so neither
+observed builds nor removals mutate world state or use UDP.

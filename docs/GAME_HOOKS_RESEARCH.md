@@ -299,3 +299,32 @@ read-only diagnostic hooks do not send or execute world mutations. The
 server's explicit provenance enum is a future integration boundary, not
 an automatic detection mechanism. Verifying real game event origin still
 requires gameplay testing and an authenticated server event pipeline.
+
+## Passive observation coalescing and scoped suppression
+
+The opt-in `BuildingHookObserver` now uses
+`ConstructionObservationDeduplicator` to collapse **identical diagnostic
+snapshots within 250 ms**. The key includes the event method, in-process
+instance token, candidate game ID, completion/progress, base association,
+and world/local transform. Progress changes or moved objects are kept as
+separate observations. Both the filter and the outgoing FIFO are bounded
+(128 entries each) to avoid unbounded growth under repeated callbacks.
+The game methods themselves **always execute**; only redundant log records
+are omitted. This is **not** multiplayer idempotency or a game-object dedupe.
+
+`ConstructionObservationContext.Suppress(SaveRestore|RemoteReplay|
+ScriptedMutation)` is an explicit, nestable, thread-local boundary for
+future trusted integration code. A postfix executed inside such a scope
+will not queue an observation. It must be entered and disposed on the same
+execution thread. Unity coroutines or async work must create the scope
+again on each resumed execution thread; it does not automatically follow
+continuations. The current game plugin **does not claim to know when save
+loading or a remote replay is happening**, and does not yet create these
+scopes from verified game APIs. Otherwise, observations still report
+`origin=unknown`.
+
+The Harmony callback also uses a thread-local recursion guard so reflective
+inspection cannot recursively enqueue another observation. Exceptions in
+this diagnostic path are contained and do not interrupt the vanilla game.
+Fake Unity tests cover nesting, callback resumption, progress/transform
+changes, duplicate-window expiry and scope isolation.
