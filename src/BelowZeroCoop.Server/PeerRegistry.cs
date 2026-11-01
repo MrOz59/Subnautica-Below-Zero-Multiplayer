@@ -55,7 +55,10 @@ internal sealed class PeerRegistry
                                   DateTime utcNow, out Peer peer)
     {
         peer = null!;
-        if (packet.PeerId != 0 || !TryGet(endpoint, utcNow, out Peer sender))
+        // A rejected or replayed movement packet must not extend the session.
+        // Otherwise an inactive peer can keep an occupied slot alive forever
+        // by sending malformed movement with a valid UDP endpoint.
+        if (packet.PeerId != 0 || !peers.TryGetValue(endpoint, out Peer sender!))
             return false;
 
         if (sender.HasMovement)
@@ -83,6 +86,8 @@ internal sealed class PeerRegistry
                 return false;
         }
 
+        // Refresh liveness only after *all* movement validation succeeds.
+        sender.LastSeenUtc = utcNow;
         sender.HasMovement = true;
         sender.LastSequence = packet.Sequence;
         sender.LastSentTime = packet.SentAt;
