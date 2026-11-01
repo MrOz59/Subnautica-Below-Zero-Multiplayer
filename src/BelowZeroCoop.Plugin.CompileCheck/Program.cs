@@ -297,6 +297,53 @@ foreignOwner.Unpatch(foreignMethod, HarmonyLib.HarmonyPatchType.Postfix,
 Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
         "test-only foreign owner cleans up separately");
 
+// Opt-in deconstruction observations are method-return diagnostics, not
+// evidence of a successfully removed persistent game object. No coroutine
+// execution, world changes or save operations are simulated here.
+Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
+        "deconstruction telemetry remains off by default");
+using (var removalObserver = new BuildingHookObserver())
+{
+    int patched = removalObserver.Install(gameAssembly,
+        BuildingHookObserver.DeconstructionTargets(), null);
+    Require(patched == 2 && HarmonyLib.HarmonyFakeDispatch.PatchCount == 2,
+            "both passive deconstruction return observers install on demand");
+    int destroyedBeforeRemoval = UnityEngine.Object.DestroyedCount;
+    var removable = new BaseDeconstructable();
+    removable.gameObject.SetComponent(
+        new UniqueIdentifier { Id = "test-deconstruct-100" });
+    int originalCalls = BaseDeconstructable.DeconstructCalls;
+    removable.Deconstruct();
+    Require(BaseDeconstructable.DeconstructCalls == originalCalls + 1,
+            "observing deconstruction does not suppress vanilla method");
+
+    var asyncTarget = new Constructable();
+    asyncTarget.gameObject.SetComponent(
+        new UniqueIdentifier { Id = "test-deconstruct-200" });
+    int asyncCalls = Constructable.DeconstructAsyncCalls;
+    var coroutine = asyncTarget.DeconstructAsync();
+    Require(coroutine != null &&
+            Constructable.DeconstructAsyncCalls == asyncCalls + 1,
+            "the coroutine factory runs normally without being enumerated");
+    var evidence = removalObserver.Drain(8);
+    Require(evidence.Count == 2 &&
+            evidence[0].EventName == "deconstruct_method_returned" &&
+            evidence[0].Game.ObservedObjectId == "test-deconstruct-100" &&
+            evidence[0].Game.CompletionEvidence == "deconstruct_returned_unverified",
+            "method return is labeled as unverified, not removed");
+    Require(evidence[1].EventName == "deconstruct_async_method_returned" &&
+            evidence[1].Game.ObservedObjectId == "test-deconstruct-200" &&
+            evidence[1].Game.CompletionEvidence ==
+                "async_method_returned_not_coroutine_completion",
+            "creating a coroutine cannot count as completed deletion");
+    Require(UnityEngine.Object.DestroyedCount == destroyedBeforeRemoval,
+            "passive deconstruction callbacks do not destroy game objects");
+    Require(removalObserver.Drain(8).Count == 0,
+            "deconstruction observations cannot replay after draining");
+}
+Require(HarmonyLib.HarmonyFakeDispatch.PatchCount == 0,
+        "deconstruction observer shutdown leaves no installed patches");
+
 using (var ambiguous = new BuildingHookObserver())
 {
     int installed = ambiguous.Install(gameAssembly, new[]
