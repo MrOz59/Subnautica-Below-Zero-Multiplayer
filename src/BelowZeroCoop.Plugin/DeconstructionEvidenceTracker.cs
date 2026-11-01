@@ -41,7 +41,11 @@ namespace BelowZeroCoop.Plugin
             Entry entry;
             if (entries.TryGetValue(identity, out entry))
             {
-                if (generation < entry.Generation) return false;
+                // Out-of-order observations may never rewind a current
+                // generation's activity time or change its phase.
+                if (generation < entry.Generation ||
+                    (generation == entry.Generation && utc < entry.UpdatedUtc))
+                    return false;
                 if (generation == entry.Generation &&
                     entry.State == Phase.VerifiedAbsent) return false;
                 if (generation > entry.Generation)
@@ -139,8 +143,14 @@ namespace BelowZeroCoop.Plugin
 
         private static bool Valid(string identity, int generation)
         {
-            return !string.IsNullOrWhiteSpace(identity) &&
-                identity.Length <= 128 && generation > 0;
+            if (string.IsNullOrWhiteSpace(identity) ||
+                identity.Length > 128 || generation <= 0 ||
+                identity != identity.Trim())
+                return false;
+            foreach (char ch in identity)
+                if (char.IsControl(ch))
+                    return false;
+            return true;
         }
     }
 }
