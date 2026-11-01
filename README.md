@@ -201,3 +201,16 @@ The trusted-host `IntegratedWorldSession.RemoveObserved` also supports
 removing an already-mapped object by its game ID after separate origin
 verification. The actual hooks still supply `origin=unknown`, so neither
 observed builds nor removals mutate world state or use UDP.
+
+
+## Optional deconstruction diagnostics
+
+The off-by-default `[Development] ObserveDeconstructionHooks = true`
+option installs two passive Harmony Postfixes on uniquely resolved game
+methods: `BaseDeconstructable.Deconstruct` and
+`Constructable.DeconstructAsync`. They produce bounded local diagnostic
+records **only**. Neither a method return nor an unexecuted coroutine is
+evidence of permanent deletion. No tracker confirmation, world tombstone,
+network replication, or save writes are triggered. The separate
+`ObserveBuildingHooks` option still works independently. See
+[hook research](docs/GAME_HOOKS_RESEARCH.md).
