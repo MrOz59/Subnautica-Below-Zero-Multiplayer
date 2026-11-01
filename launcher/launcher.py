@@ -135,6 +135,7 @@ def doctor(game_dir: Path | None) -> tuple[list[str], bool]:
 
     messages.append("Game: " + str(game_dir))
     core = game_dir / "BepInEx" / "core" / "BepInEx.dll"
+    harmony = core.with_name("0Harmony.dll")
     proxy = game_dir / "winhttp.dll"
     plugin = game_dir / "BepInEx" / "plugins" / "BelowZeroCoop" / PLUGIN_NAME
     protocol = plugin.with_name(PROTOCOL_NAME)
@@ -144,10 +145,18 @@ def doctor(game_dir: Path | None) -> tuple[list[str], bool]:
     else:
         messages.append("MISSING: BepInEx core. Install Windows x64 BepInEx for Proton/Windows.")
 
+    if harmony.is_file():
+        messages.append("OK: Harmony dependency found in BepInEx/core.")
+    else:
+        messages.append("MISSING: BepInEx/core/0Harmony.dll (required by passive hooks).")
+
     if proxy.is_file():
         messages.append("OK: winhttp.dll loader proxy detected.")
     else:
         messages.append("MISSING: winhttp.dll loader proxy.")
+
+    if not (game_dir / "doorstop_config.ini").is_file():
+        messages.append("CHECK: doorstop_config.ini not found; confirm your BepInEx loader setup.")
 
     if plugin.is_file() and protocol.is_file():
         messages.append("OK: BelowZeroCoop plugin and protocol assemblies found.")
@@ -157,7 +166,8 @@ def doctor(game_dir: Path | None) -> tuple[list[str], bool]:
     if sys.platform.startswith("linux"):
         messages.append("Linux/Proton Steam launch options: " + STEAM_PROTON_OPTIONS)
 
-    return messages, core.is_file() and proxy.is_file() and plugin.is_file() and protocol.is_file()
+    return messages, (core.is_file() and harmony.is_file() and proxy.is_file()
+                      and plugin.is_file() and protocol.is_file())
 
 
 def sha256(path: Path) -> str:
@@ -274,6 +284,7 @@ def prepare_game_test(game_dir: Path, *, build: bool = True,
     required = (
         plugin, protocol,
         game_dir / "BepInEx" / "core" / "BepInEx.dll",
+        game_dir / "BepInEx" / "core" / "0Harmony.dll",
         game_dir / "winhttp.dll",
     )
     missing = [str(item) for item in required if not item.is_file()]
