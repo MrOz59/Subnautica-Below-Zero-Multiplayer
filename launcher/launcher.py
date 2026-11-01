@@ -24,6 +24,8 @@ DEFAULT_PLUGIN = PROJECT_ROOT / "src" / "BelowZeroCoop.Plugin" / "bin" / "Releas
 DEFAULT_PROTOCOL = DEFAULT_PLUGIN.with_name(PROTOCOL_NAME)
 STEAM_PROTON_OPTIONS = 'WINEDLLOVERRIDES="winhttp.dll=n,b" %command%'
 
+from game_test import build_game_plugin, configure_solo_test, game_test_report
+
 
 def config_file() -> Path:
     if os.name == "nt":
@@ -248,6 +250,46 @@ def install_plugin(game_dir: Path, plugin_file: Path, protocol_file: Path, force
     return results
 
 
+def prepare_game_test(game_dir: Path, *, build: bool = True,
+                      observe_builds: bool = False,
+                      observe_deconstruction: bool = False) -> list[str]:
+    """Build and install only our own assemblies; enable safe solo diagnostics.
+
+    The game installation, game saves, store integration and third-party
+    plugin folders are not modified. Existing BelowZeroCoop DLLs and config
+    are backed up before replacement.
+    """
+    if not is_game_directory(game_dir):
+        raise ValueError("Select a valid Subnautica Below Zero game folder.")
+    if not (game_dir / "SubnauticaZero.exe").is_file():
+        raise ValueError(
+            "The plugin requires Windows Below Zero (native Windows or Proton), "
+            "not the native Linux executable."
+        )
+    if build:
+        plugin, protocol = build_game_plugin(game_dir, PROJECT_ROOT)
+    else:
+        plugin, protocol = DEFAULT_PLUGIN, DEFAULT_PROTOCOL
+    # The installer validates the existing BepInEx loader and either commits
+    # both assemblies or restores previous versions on failure.
+    results = install_plugin(game_dir, plugin, protocol, force=True)
+    results += configure_solo_test(
+        game_dir, observe_builds=observe_builds,
+        observe_deconstruction=observe_deconstruction,
+    )
+    diagnostic, ok = doctor(game_dir)
+    results += diagnostic
+    if not ok:
+        raise RuntimeError("Game test preparation did not pass loader validation.")
+    results.extend([
+        "READY FOR SOLO GAME TEST: launch Subnautica: Below Zero via Steam.",
+        "No networking or gameplay replication is enabled.",
+        "After exiting the game: python launcher/launcher.py test-report --game-dir "
+        + str(game_dir),
+    ])
+    return results
+
+
 def launch_steam() -> None:
     if sys.platform.startswith("win"):
         os.startfile("steam://rungameid/" + STEAM_APP_ID)  # type: ignore[attr-defined]
@@ -354,6 +396,24 @@ def gui() -> None:
         except (OSError, ValueError) as ex:
             messagebox.showerror("Installation failed", str(ex))
 
+    def solo_test() -> None:
+        if not messagebox.askyesno(
+            "Prepare solo test",
+            "Build and install BelowZeroCoop, with local hook scanning enabled?\n"
+            "Our existing DLLs/config will be backed up if replaced.\n"
+            "No network or multiplayer features will be enabled.",
+        ):
+            return
+        try:
+            for line in prepare_game_test(folder()):
+                log(line)
+        except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as ex:
+            messagebox.showerror("Game test preparation failed", str(ex))
+
+    def test_report() -> None:
+        for line in game_test_report(folder()):
+            log(line)
+
     def run_action(action) -> None:
         try:
             action()
@@ -365,6 +425,8 @@ def gui() -> None:
     ttk.Button(bar, text="Browse", command=browse).pack(side="left", padx=(0, 6))
     ttk.Button(bar, text="Diagnose", command=check).pack(side="left", padx=(0, 6))
     ttk.Button(bar, text="Install built plugin", command=install).pack(side="left", padx=(0, 6))
+    ttk.Button(bar, text="Prepare solo test", command=solo_test).pack(side="left", padx=(0, 6))
+    ttk.Button(bar, text="Test log", command=test_report).pack(side="left", padx=(0, 6))
 
     actions = ttk.Frame(frame)
     actions.pack(fill="x", pady=(6, 4), before=output)
@@ -398,6 +460,19 @@ def main(argv: list[str] | None = None) -> int:
     ins.add_argument("--plugin", type=Path, default=DEFAULT_PLUGIN)
     ins.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     ins.add_argument("--force", action="store_true", help="Back up and replace existing mod DLLs")
+    test = commands.add_parser("prepare-test",
+                               help="Build/install plugin and configure safe in-game solo diagnostics")
+    test.add_argument("--game-dir")
+    test.add_argument("--no-build", action="store_true",
+                      help="Use prebuilt Release DLLs instead of building against local game DLLs")
+    test.add_argument("--observe-builds", action="store_true",
+                      help="Opt in to passive construction return diagnostics")
+    test.add_argument("--observe-deconstruction", action="store_true",
+                      help="Opt in to passive deconstruction return diagnostics")
+    report = commands.add_parser("test-report",
+                                 help="Read BelowZeroCoop diagnostics from local BepInEx logs")
+    report.add_argument("--game-dir")
+    report.add_argument("--lines", type=int, default=80)
     commands.add_parser("launch", help="Launch the legitimately installed game via Steam")
     srv = commands.add_parser("start-server", help="Start a development-only UDP server")
     srv.add_argument("--bind", default="127.0.0.1", help="Bind address (loopback by default)")
@@ -426,12 +501,27 @@ def main(argv: list[str] | None = None) -> int:
             if game is None:
                 raise ValueError("Game directory not found. Specify --game-dir.")
             print("\n".join(install_plugin(game, args.plugin, args.protocol, args.force)))
+        elif args.command == "prepare-test":
+            game = get_game_directory(args.game_dir)
+            if game is None:
+                raise ValueError("Game directory not found. Specify --game-dir.")
+            for line in prepare_game_test(
+                game, build=not args.no_build,
+                observe_builds=args.observe_builds,
+                observe_deconstruction=args.observe_deconstruction,
+            ):
+                print(line)
+        elif args.command == "test-report":
+            game = get_game_directory(args.game_dir)
+            if game is None:
+                raise ValueError("Game directory not found. Specify --game-dir.")
+            print("\n".join(game_test_report(game, limit=args.lines)))
         elif args.command == "launch":
             launch_steam()
         elif args.command == "start-server":
             start_server(args.bind, args.port, args.allow_lan)
         return 0
-    except (OSError, RuntimeError, ValueError) as ex:
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as ex:
         print("ERROR: " + str(ex), file=sys.stderr)
         return 1
 
